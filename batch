@@ -1,0 +1,433 @@
+#!/usr/bin/perl
+
+# README
+# Let's call the root of your nfs mounted experiment directory 'foo.'
+#
+# Create foo/batch/machines such that it contains a list of machines on
+# which you want to run jobs.  E.g.:
+# sb01
+# sb02
+# ...
+#
+# Log into each blade and start off the client side.
+# This side kicks off each job and reports load into foo/sbXX.load
+# nohup batch -d foo -h -r > foo/batch/sbXX.runlog &
+# (The logging is unnecessary, but convenient.)
+# Note that this assumes csh, but there are bash equivalents.
+#
+# Create foo/batch/jobs such that it contains names of your experiment
+# directories.  E.g.:
+# exp1
+# exp2
+# ...
+# (where foo/exp1, foo/exp2 exist)
+#
+# Create foo/exp1/jobs, foo/exp2/jobs such that they contain the
+# actual experiments to run.  The purpose of this level of indirection
+# is to allow you to re-run sets of experiments that are contained in
+# a directory easily.
+#
+# Each e.g. foo/exp1/jobs similarly contains a list of sub-experiment
+# files, e.g. ones with a particular set of parameters.  In
+# foo/exp1/jobs might go:
+# param1.script
+# param2.script
+# ...
+# This functions as another level of indirection to allow you to
+# easily re-run different sets of parameters.
+#
+# Finally, put jobs to run inside of each e.g. param1.script (existing
+# at foo/exp1/param1.script), with one job per line.  Each job will be
+# started from the directory foo/exp1.  param1.script could contain:
+# a.out -f flag1 > log.param1/flag1.result
+# a.out -f flag2 > log.param1/flag2.result
+#
+# Now that you have this mess set up, log into a login machine,
+# (e.g. drdoom or your unix desktop) and start off all of the jobs
+# with:
+# nohup batch -d foo -r > foo/batch/drdoom.runlog &
+#
+# Here's what will happen:
+# The server (e.g. drdoom) will create a list of jobs to run.
+# Anytime a machine reports its load is below a threshold, the server
+# will create a file foo/batch/sbXX.job.
+# The clients will periodically look for this file and kick off the
+# new job.
+# When all of the jobs have been assigned to clients, the server
+# exits.
+# The clients do not exit.
+#
+# Note that this script used to be more sophisticated and let you
+# check to see the state of each job, but I don't think that works
+# anymore.
+#
+# JL's note:
+# nohup batch -d ~/p2p/lb/sim -r -h > ~/p2p/lb/sim/batch/sb03.runlog &
+
+# $Id: batch,v 1.4 2005/06/20 14:16:52 jonathan Exp $
+
+# rm *.log *.runlog *.load *.job
+
+use strict;
+use Getopt::Std;
+
+# Note: This script assumes coarse clock synchronization between scheduler and job host machines
+
+# check load every minute
+# change to 60
+my $writeLoadFrequency = 60;
+my $readLoadFrequency = $writeLoadFrequency * 4;
+my $loadOutOfDate = $readLoadFrequency * 2;
+
+# should be number of processors each machine has
+# note that I'm not including "hyperthreaded" processors for Blades
+my $targetLoad = 2;
+
+my $usage = "Usage: batch -d [directory with parameter files] [-h] [-r]\n";
+$usage .=   "       -h if this machine is a job host\n";
+$usage .=   "       -r actually start running jobs\n";
+
+my $rootDir = '';
+my %para = ();
+getopts('d:hr', \%para);
+
+if (defined($para{'d'})) {
+    $rootDir = $para{'d'};
+} else {
+    die ("$usage\n");
+}
+
+chdir ($rootDir) or die ("Cannot chdir to $rootDir");
+my $currentTime = time;
+my $niceTime = &printableTime ($currentTime);
+
+######################################################################
+
+my $WAITING = 0;
+my $RUNNING = 1;
+my $FINISHED = 2;
+
+my %state = ($WAITING, 'WAITING',
+	  $RUNNING, 'RUNNING',
+	  $FINISHED, 'FINISHED');
+
+######################################################################
+
+my $paraDir = "batch";
+my @machines = ();
+
+my $hostname = `hostname`;
+$hostname =~ s/\..*$//;
+$hostname =~ s/\s+//g;
+#print "Hostname $hostname\n";
+
+######################################################################
+
+sub printableTime {
+    my ($cTime) = @_;
+    my (@parts) = localtime ($cTime);
+    my $printMe = "$parts[2]:$parts[1]:$parts[0] ".($parts[4]+1)."/$parts[3]/".($parts[5]+1900);
+    return $printMe;
+}
+
+######################################################################
+
+sub countJobState {
+    my ($job2state, $state2count) = @_;
+
+    @$state2count = ();
+    $state2count->[$RUNNING] = 0;
+    $state2count->[$FINISHED] = 0;
+    $state2count->[$WAITING] = 0;
+
+    foreach my $job (sort keys %$job2state) {
+	if ($job2state->{$job} == $RUNNING) {
+	    $state2count->[$RUNNING]++;
+	} elsif ($job2state->{$job} == $FINISHED) {
+	    $state2count->[$FINISHED]++;
+	} elsif ($job2state->{$job} == $WAITING) {
+	    $state2count->[$WAITING]++;
+	} else {
+	    die ("Unknown state for job $job\n");
+	}
+    }
+}
+
+######################################################################
+
+my $inMachinesFile = 0;
+my $machinesFile = "$paraDir/machines";
+open MACH, "$machinesFile" or die ("Cannot open $machinesFile");
+while (my $line = <MACH>) {
+    $line =~ s/\s+//g;
+    $machines[$#machines+1] = $line;
+    if ($line eq $hostname) {
+	$inMachinesFile = 1;
+    }
+}
+close MACH;
+
+######################################################################
+
+sub round {
+    my($number) = shift;
+    return int($number + .5);
+}
+
+sub findIdleMachines {
+    my ($idleMachines) = @_;
+    @$idleMachines = ();
+
+    $currentTime = time;
+    $niceTime = &printableTime ($currentTime);
+
+    my $justDoAllMachines = 0;
+    foreach my $machine (@machines) {
+
+	if ($justDoAllMachines) {
+	    $idleMachines->[$#$idleMachines+1] = $machine;
+	} else {
+
+	    my $loadFile = "$paraDir/$machine.load";
+	    if (-e $loadFile) {
+		my (@statInfo) = stat ($loadFile);
+		my $mtime = $statInfo[9];
+		if ($mtime + $loadOutOfDate > $currentTime) {
+		    open LOADINFO, $loadFile or die ("Cannot open $loadFile\n");
+		    my $loadStr = <LOADINFO>;
+		    close LOADINFO;
+		    if ($loadStr =~ /(\d+.\d+)/) {
+			my $load = $1;
+			$load = &round ($load);
+			if ($load < $targetLoad) {
+			    $idleMachines->[$#$idleMachines+1] = $machine;
+			}
+			# print "load $machine $load\n";
+		    } else {
+			print "$niceTime Load file $loadFile does not contain what was expected\n";
+		    }
+		} else {
+		    print "$niceTime Load file $loadFile is out-of-date\n";
+		}
+	    } else {
+		print "$niceTime Load file $loadFile does not exist\n";
+	    }
+	}
+    }
+}
+
+######################################################################
+sub findJobState {
+    my ($jobDir, $job) = @_;
+
+    my $output = '';
+    print "job = $job\n";
+    return $WAITING;
+
+#    if (($job =~ /-O\s+(.*?)\s+/) || ($job =~ /-O\s+(.*?)$/)) {
+#	$output = $1;
+#    } else {
+#	print ("Problem with $jobDir/$job");
+#	return $FINISHED;
+#    }
+#    my $runOutputFile = "$jobDir/$output.run";
+#    my $finishedOutputFile = "$jobDir/$output.sum";
+
+##    print "job $runOutputFile $finishedOutputFile\n";
+
+#    if (-e $finishedOutputFile) {
+#	return $FINISHED;
+#    } elsif (-e $runOutputFile) {
+#	return $RUNNING;
+#    }
+#    return $WAITING;
+}
+
+
+
+######################################################################
+
+sub findJobs {
+    my ($job2state, $job2dir) = @_;
+    %$job2dir = ();
+    %$job2state = ();
+    my @jobDirs = ();
+    $currentTime = time;
+    $niceTime = &printableTime ($currentTime);
+
+    my $jobDirsFile = "$paraDir/jobs";
+    open JOBDIRS, "$jobDirsFile" or die ("Cannot open $jobDirsFile");
+    while (my $line = <JOBDIRS>) {
+	next if ($line =~ /^\#/);
+	next if ($line =~ /^\s+$/);
+	$line =~ s/\s+//g;
+	
+	$jobDirs[$#jobDirs+1] = $line;
+    }
+    close JOBDIRS;
+
+    foreach my $jobDir (@jobDirs) {
+	my $jobFilesFile = "$jobDir/jobs";
+	open JOBFILESFILE, "$jobFilesFile" or die ("Cannot open $jobFilesFile\n");
+	while (my $line = <JOBFILESFILE>) {
+	    next if ($line =~ /^\#/);
+	    next if ($line =~ /^\s+$/);
+	    $line =~ s/\s+//g;
+	    my $jobFile = "$jobDir/$line";
+	    open JOBFILE, "$jobFile" or die ("Cannot open $jobFile\n");
+	    while (my $job = <JOBFILE>) {
+		next if ($job =~ /^\#/);
+		next if ($job =~ /^\s+$/);
+		$job =~ s/^\s+//;
+		$job =~ s/\s+$//;
+		my $jobState = &findJobState ($jobDir, $job);
+		$job2state->{$job} = $jobState;
+		$job2dir->{$job} = $jobDir;
+	    }
+	    close JOBFILE;
+	}
+	close JOBFILESFILE;
+    }
+}
+
+######################################################################
+
+#if (defined($para{'s'})) {
+#    foreach my $machine (@machines) {
+#	my $cmd = "ssh $machine shoot batch";
+#	sleep (2);
+#	$cmd = "ssh $machine batch -d $rootDir -r -h &";
+#	system ($cmd);
+#	sleep (2);
+#    }
+#    exit (0);
+#}
+
+######################################################################
+
+if (defined($para{'h'})) {
+    # I am a job host
+    if ($inMachinesFile == 0) {
+	die ("Given -h flag, but $hostname not in $machinesFile\n");
+    }
+
+    my $jobFile = "$paraDir/$hostname.job";
+    unlink $jobFile;
+
+    while (1) {
+	$currentTime = time;
+	$niceTime = &printableTime ($currentTime);
+
+	my $uptime = `uptime`;
+        # 10:51:54 up 19:51,  3 users,  load average: 0.00, 0.00, 0.00
+	my $load = 0;
+	if ($uptime =~ /average:\s+(\d+\.\d+)/) {
+	    $load = $1;
+	} else {
+	    die ("Could not find load average in uptime\n");
+	}
+	open UPTIME, ">$paraDir/$hostname.load" or die ("Cannot open load file $paraDir/$hostname.load\n");
+	print UPTIME "$load\n";
+	close UPTIME;
+	sleep ($writeLoadFrequency);
+
+	if (-e $jobFile) {
+	    open JOBIN, "$jobFile" or die ("Cannot open $jobFile for reading\n");
+	    my $job = <JOBIN>;
+	    close JOBIN;
+	    my $dir = '';
+	    my $cmd = '';
+	    if ($job =~ /^(.*?)\s+(.*?)$/) {
+		$dir = $1;
+		$cmd = $2;
+	    }
+	    print "$niceTime $hostname starting $cmd in $dir\n";
+	    unlink $jobFile;
+	    if (defined($para{'r'})) {
+		chdir ($dir);
+		system ($cmd);
+		chdir ($rootDir);
+	    } else {
+		print "Not starting job because in test mode\n";
+	    }
+	} else {
+#	    print "No job file $jobFile\n";
+	}
+    }
+
+    # end of host machine
+
+######################################################################
+
+} elsif (defined($para{'r'})) {
+    my %job2state = ();
+    my %job2dir = ();
+    my @idleMachines = ();
+
+    &findJobs (\%job2state,\%job2dir);
+
+    my @state2count = ();
+    &countJobState (\%job2state, \@state2count);
+
+    while ($state2count[$WAITING] > 0) {
+
+	$currentTime = time;
+	$niceTime = &printableTime ($currentTime);
+
+	@idleMachines = ();
+	while ($#idleMachines < 0) {
+	    &findIdleMachines (\@idleMachines);
+	    if ($#idleMachines < 0) {
+		sleep ($readLoadFrequency);
+	    }
+	}
+
+	my %job2stateCopy = ();
+	foreach my $job (keys %job2state) {
+	    if ($job2state{$job} == $WAITING) {
+		if ($#idleMachines >= 0) {
+		    my $machine = pop (@idleMachines);
+		    my $jobFile = "$paraDir/$machine.job";
+		    open JOBOUT, ">$jobFile" or die ("Cannot open $jobFile for writing\n");
+		    $job = "$job2dir{$job} nohup $job &";
+		    print "$niceTime starting on $machine job $job\n";
+		    print JOBOUT "$job";
+		    close JOBOUT;
+		    $job2stateCopy{$job} = $RUNNING;
+		} else {
+		    $job2stateCopy{$job} = $WAITING;
+		}
+	    } else {
+		$job2stateCopy{$job} = $job2state{$job};
+	    }
+	}
+
+	%job2state = %job2stateCopy;
+
+#	sleep (2);
+	sleep ($readLoadFrequency);
+	&countJobState (\%job2state, \@state2count);
+	print ("$niceTime Waiting $state2count[$WAITING] Running $state2count[$RUNNING] Finished $state2count[$FINISHED]\n");
+    }
+
+    print "$niceTime Finished batch scheduling.  Exiting.\n";
+
+# end of batch scheduler
+} else {
+
+    # just check the state of any jobs
+    my %job2state = ();
+    my %job2dir = ();
+    &findJobs (\%job2state,\%job2dir);
+    my $i = 0;
+    foreach my $job (sort keys %job2state) {
+	print "$i $state{$job2state{$job}} $job2dir{$job} $job\n";
+	$i++;
+    }
+    my @state2count = ();
+    &countJobState (\%job2state, \@state2count);
+    print ("Waiting $state2count[$WAITING] Running $state2count[$RUNNING] Finished $state2count[$FINISHED]\n");
+}
+
+######################################################################
+

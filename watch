@@ -1,0 +1,59 @@
+#!/usr/bin/perl
+
+# $Id: watch,v 1.1 2005/11/12 03:36:09 jonathan Exp $
+
+use strict;
+use Getopt::Std;
+use Statistics::Descriptive;
+
+# Written by Jonathan Ledlie
+# jonathan@eecs.harvard.edu
+
+##################################################
+
+my $usage = "Usage: tail -f file | watch -f frequency -k column -w [keyword column] > result\n";
+
+my %para = ();
+getopts('f:k:w:', \%para);
+
+my $frequency = 0;
+if (defined($para{'f'})) {
+    $frequency = $para{'f'};
+} else {
+    die ("Frequency required");
+}
+
+my @items = ();
+my $count = 0;
+
+while (my $line = <>) {
+
+    if (defined ($para{'w'})) {
+	if ($line =~ /$para{'w'}\s(\d+\.?\d*)/) {
+	    my $item = $1;
+	    $items[$#items+1] = $item;
+	    #print "$line $item\n";
+	} else {
+	    #print "no match $line\n";
+	}
+    } elsif (defined ($para{'k'})) {
+	my (@i) = split (/\s/,$line);
+	if (defined ($i[$para{'k'}-1])) {
+	    $items[$#items+1] = $i[$para{'k'}-1];
+	}
+    }
+
+    $count++;
+
+    if ($count >= $frequency) {
+	my $stat = Statistics::Descriptive::Full->new();
+	$stat->add_data(@items);
+	my $out = printf ("%.3f %.3f %.3f",
+		$stat->mean(), $stat->standard_deviation(),
+		$stat->max());
+	print "$out\n";
+	$count = 0;
+	@items = ();
+    }
+
+}

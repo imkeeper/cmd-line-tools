@@ -1,0 +1,23 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my $key = 0;
+my %para = ();
+getopts('k:', \%para);
+
+if (defined($para{'k'})) {
+    $key = $para{'k'};
+}
+
+
+my $logBaseTwo = log(2.);
+
+while (my $line = <STDIN>) {
+  my (@items) = split (/\s+/, $line);
+  my $res = $items[$key];
+  $res = log($res) / $logBaseTwo;
+  $line =~ s/\s+$//;
+  print "$line $res\n";
+}

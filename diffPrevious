@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+
+# $Id: diffPrevious,v 1.4 2005/02/24 18:46:04 jonathan Exp $
+
+use strict;
+
+##################################################
+
+my $previous = 0;
+
+while (my $line = <>) {
+    my @items = split (/\s+/, $line);
+    my $current = $items[0];
+    $current =~ s/\s//g;
+    my $diff = $current-$previous;
+    $previous = $current;
+    print "$diff\n";
+}
+
+

@@ -1,0 +1,19 @@
+#!/usr/bin/perl
+
+use strict;
+
+# takes a histogram of the form
+# key count
+# and prints each 'key' count times
+
+while (my $line = <>) {
+
+    my (@items) = split (/\s+/,$line);
+
+    if (exists($items[0]) && exists ($items[1])) {
+
+	for (my $i = 0; $i < $items[1]; $i++) {
+	    print "$items[0]\n";
+	}
+    }
+}

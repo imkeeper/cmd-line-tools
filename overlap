@@ -1,0 +1,77 @@
+#!/usr/bin/perl
+
+# $Id: overlap,v 1.1 2005/11/19 16:33:37 jonathan Exp $
+
+use strict;
+use Getopt::Std;
+
+my $usage = "Usage:\n";
+$usage .=   "      overlap [-l] [-v] file1 file2\n";
+$usage .=   "              -l match whole lines not words\n";
+$usage .=   "              -v reverse match, output items only in file2\n";
+$usage .=   "Outputs words common to both files\n";
+
+my %para = ();
+getopts('lv', \%para);
+
+
+my $file1 = $ARGV[0];
+my $file2 = $ARGV[1];
+
+if ($#ARGV != 1) {
+  die ($usage);
+}
+
+sub getLines {
+  my ($file, $hash) = @_;
+  open FILE, $file or die ("Cannot open $file");
+
+  #print "file $file\n";
+  
+  while (my $line = <FILE>) {
+      chop $line;
+      $hash->{$line} = 1;
+      #print "l $line\n";
+  }
+  close $file;
+}
+
+sub getWords {
+  my ($file, $hash) = @_;
+  open FILE, $file or die ("Cannot open $file");
+  
+  while (my $line = <FILE>) {
+    my (@words) = split (/\s+/, $line);
+    foreach my $word (@words) {
+      $hash->{$word} = 1;
+      #print "$word\n";
+    }
+  }
+
+  close $file;
+}
+
+my %words1 = ();
+my %words2 = ();
+
+if (defined($para{'l'})) {
+    &getLines ($file1, \%words1);
+    &getLines ($file2, \%words2);
+} else {
+    &getWords ($file1, \%words1);
+    &getWords ($file2, \%words2);
+}
+
+foreach my $word1 (keys %words1) {
+  #print "w1 $word1\n";
+    if (defined ($para{'v'})) {
+	if (!defined ($words2{$word1})) {
+	    print "$word1\n";
+	}
+    } else {
+	if (defined ($words2{$word1})) {
+	    print "$word1\n";
+	}
+    }
+}
+

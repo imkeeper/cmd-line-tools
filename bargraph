@@ -1,0 +1,1717 @@
+#!/usr/bin/perl -w
+
+# The interpreter line will be replaced by the Makefile to point to
+# the correct version of perl.
+
+# Use BEGIN to force the version check to happen at compile time.  If
+# I wait until runtime, I can get errors that really are version
+# errors that appear to be something else.
+
+BEGIN {require 5.004;}
+
+use strict;
+
+# bargraph
+# Jeff Gibson
+# Stanford University
+
+#############################################################################
+#                Copyright (C) 1997, 1998, 1999 Jeff Gibson
+#
+# These coded instructions, statements, and computer programs contain
+# unpublished proprietary information of Jeff Gibson, and are
+# protected by Federal copyright law.  They may freely copied, but may not
+# sold without the prior, written consent of Jeff Gibson.
+#############################################################################
+
+
+# Do not change this line.  The 'make install' will change this to use
+# the libraries in the correct place.
+#use lib '.';
+use lib '/home/lair/jonathan/bargraphs/Bargraph-2.41';
+
+use Bargraph;
+use Getopt::Long;
+use IO::File;
+
+set_platform('UNIX');
+
+my @OUTPUT_FORMATS = qw(ps splot gif tk);
+my $DEFAULT_FORMAT = 'ps';
+
+#############################################################################
+# parse command-line
+#############################################################################
+my %opt;
+my @options = qw(
+		 h v quiet|q
+		 
+		 ps splot gif tk
+
+		 color!
+		 landscape!
+		 size=s
+		 o=s
+		 options=s
+		 f=s
+		);
+$opt{options} = '';
+
+GetOptions(\%opt, @options) or usage();
+usage()       if $opt{h};
+version()     if $opt{v};
+no_warnings() if $opt{quiet};
+
+my $format = [grep {$opt{$_}} @OUTPUT_FORMATS]->[0];
+$format = $DEFAULT_FORMAT unless defined $format;
+
+#############################################################################
+# open input and output files
+#############################################################################
+
+my $filename = shift;
+
+my $in_fh = IO::File->new();
+if(defined $filename) {
+  $in_fh->open($filename)            or die "Can't open \"$filename\": $!\n";
+} else {
+  $in_fh->fdopen(fileno(STDIN), 'r') or die "Can't read stdin: $!\n";
+  $filename = 'stdin';
+}
+
+my $out_fh = IO::File->new();
+if(defined $opt{o}) {
+  $out_fh->open(">$opt{o}")            or die "Can't open \"$opt{o}\": $!\n";
+} else {
+  $out_fh->fdopen(fileno(STDOUT), 'w') or die "Can't write stdout: $!\n";
+}
+
+#############################################################################
+# read .bargraph file if there is one
+#############################################################################
+
+my $defaults_file = $opt{f} || $ENV{BARGRAPH_DEFAULTS};
+
+read_defaults($defaults_file);
+
+#############################################################################
+# group together all command-line options that turn into graph_options
+#############################################################################
+
+my $graph_options = construct_graph_options();
+
+#############################################################################
+# create the graph object
+#############################################################################
+
+my $graph = create_from_input($in_fh, $filename, $graph_options);
+
+#############################################################################
+# draw the graph
+#############################################################################
+
+$graph->create_image($format, $out_fh);
+
+#############################################################################
+# Close input and output files
+#############################################################################
+
+undef $in_fh;
+undef $out_fh;
+
+exit(0);
+
+
+#############################################################################
+
+# SUBROUTINES
+
+#############################################################################
+
+sub usage {
+  my $str = <<EOT
+Usage: $0 [ options ] [ filename ]
+Reads stdin if no filename specified
+Options are:
+-h                      This message
+-v                      Print version information and exit
+-q			Quiet (no warnings)
+
+-splot                  Generate splot input language
+-ps	                Generate PostScript (default)
+-gif                    Generate GIF
+-tk                     Make a tk preview
+
+-color/-nocolor	        allow/disallow use of colors in the graph
+-landscape/-nolandscape use landscape/portrait mode
+-size <m>x<n>           make graph m inches by n inches
+-options <string>	add string to options list in graph
+
+-o <filename>		send output to named file instead of stdout
+-f <filename>           Read filename instead of .bargraph for defaults
+EOT
+  ;
+    
+  print STDERR $str;
+  
+  exit(1);
+}
+
+#############################################################################
+
+sub version {
+    print STDERR "bargraph version $Bargraph::VERSION\n";
+    exit(0);
+}
+
+#############################################################################
+
+sub construct_graph_options {
+    my $graph_options .= " $opt{options} ";
+
+    $graph_options .= boolean_option_string('landscape');
+    $graph_options .= boolean_option_string('color');
+    $graph_options .= " -size $opt{size} " if defined $opt{size};
+    
+    return $graph_options;
+}
+
+#############################################################################
+
+sub boolean_option_string {
+  my ($option) = @_;
+
+  return '' unless defined $opt{$option};
+  return $opt{$option} ? " -$option " : " -no$option ";
+}
+
+#############################################################################
+
+#############################################################################
+
+# Interpreter stops here.  It's all documentation from here on down.
+
+#############################################################################
+
+__END__
+
+
+=pod
+
+=head1 NAME
+
+bargraph - a graphing tool
+
+=head1 SYNOPSIS
+
+bargraph [C<-h>] [C<-v>] [C<-q>] [-ps] [-splot] [-gif] [-tk] [-color] 
+[-nocolor] [-landscape] [-nolandscape] [-size I<size>] 
+[-options I<options>]  [C<-o> I<output_file>] [input_file]
+
+=head1 DESCRIPTION
+
+=head2 Overview
+
+Bargraph is a bar graph generating script.  It reads a .bars file
+(described below).  Its output depends on the command-line options,
+but it is currently able to create Encapsulated PostScript, GIF, or
+splot files.  It can also generate a Tk window with the graph. 
+
+GIF generation is done via the GD library, which is available on CPAN.
+You must have GD, version 1.18, installed in order to use GIF
+generation.  Newer versions of GD have removed GIF support, so they
+cannot be used with bargraph.  I have not yet come up with a different
+way to generate GIF files, and I don't even know if I can do it in
+such a way as to not be a copyright violation.  My suggestion is to
+generate PostScript and use other tools to do format conversion.
+
+=head2 Command-line
+
+=over 4
+
+=item C<-h>
+
+Display help message.
+
+=item C<-v>
+
+Print version information and exit.
+
+=item C<-q>
+
+Quiet mode (no warnings).
+
+=item C<-ps>
+
+Generate PostScript (default).
+
+=item C<-gif>
+
+Generate GIF.
+
+=item C<-splot>
+
+Generate SPLOT.
+
+=item C<-tk>
+
+Open Tk previewer.
+
+=item C<-color>/C<-nocolor>
+
+Allow/disallow use of colors in the graph.
+
+=item C<-landscape>/C<-nolandscape>
+
+Use landscape/portrait mode.
+
+=item C<-size> <m>x<n>
+
+Make graph m inches by n inches.
+
+=item C<-options> <string>
+
+Add string to options list in graph.
+
+=item C<-o> <filename>
+
+Send output to the named file instead of stdout.
+
+=item C<-f> <filename>
+
+Read filename instead of .bargraph as default file.
+
+=back
+
+=head2 Inputs and Outputs
+
+The input file should be a .bars file (described below).  It will read
+stdin if no input file is specified.  The output file format depends
+on the options.  With -ps, it generates PostScript, with -gif, it
+generates a GIF file, and with -splot, it generates splot.  -tk
+produces no textual output, just a window with the graph.  If none of
+-ps, -splot, -gif, or -tk are supplied, -ps is assumed.  Any generated
+text is printed to stdout or to the file specified by the C<-o> option.
+
+PostScript is the preferred back-end because it's the most flexible
+(the language was designed for this sort of thing).  The other
+back-ends support subsets of PostScript's functionality.  When a
+feature isn't supported by all back-ends, it's documentation will say
+so.
+
+=head1 DATA FILE FORMAT
+
+=head2 Bar plots
+
+A .bars file consists of a short header with information about the
+title and axis labels, followed by a list of plots and text objects.
+I could write some kind of grammar for the data files, but you'd just
+ignore it anyway, so I'll show the format by example.  By the way, if
+you're reading this as a man page, you may be a little confused since
+you won't see any pictures.  If you build the html documentation,
+though, you'll see the pretty pictures.
+
+
+=head2 ex1 Bars
+
+Here's a very simple bargraph:
+
+=for html
+<a href='ex1.ps'>ex1.ps</a> <a href='ex1.gif'>ex1.gif</a>
+
+
+  # ex1.bars
+  # '#' is comment char
+  Title: My Graph: -textfont helvetica20b
+  XAxis: My X Axis: -labelalign center
+  YAxis: My Y Axis: -labelalign center
+  Key: right+(0.25*inch), top: Legend: -keytitlealign center
+  Options: -keyall -rightmargin 2
+  
+  Bar: 2: First
+  Bar: 1: Second : -setcolor red
+  Bar: 3: Third  : -setcolor blue
+
+
+This is about the simplest bargraph that illustrates all of the major
+parts.  First of all, '#' is the comment character.  Each command of
+the .bars file is a line itself.  Lines may be extended by escaping
+the newline with '\'.  The format of each line (with the Options: line
+being the exception) is:
+
+
+  object_tag: [<object specific stuff>]: object_name [: <options>]
+
+The object_tag tells what kind of object is being defined, be it the
+title, the xaxis, or whatever.  The following seven object tags are
+special: "Title", "XAxis", "YAxis", "Key", "Colors", "Grays",
+"Options".  Any or all my be omitted, but any of them that are present
+must appear before any other object tags.
+
+I'm sure you can guess what the Title, XAxis, and YAxis lines do.
+Don't worry about the syntax of the options yet; we'll come to that
+later.  The Key line is a little bit more complicated.  It takes an
+extra field in the format x_coord, y_coord.  These coordinates of the
+upper left corner of the key are expressed in the coordinate system of
+the graph.  Since some objects, like the key, can be difficult to
+place in graph coordiates, you are free to enter expressions for each
+coordiate.  In reality, they can be any perl expression, but stick to
+regular arithmetic to avoid funny side-effects.  In addition, there
+are a couple of predefined values that you can use in these
+expressions.  For the x coordinate, "left" is the x coordinate of the
+left side of the graph, and "right" is the x coordinate of the right
+side of the graph.  "inch" is a conversion factor having the
+dimensions of inches/x_unit.  Similary, the y coordinate has the
+predefined values "top", "bottom", and "inch".  The Options line just
+contains options that apply to the graph itself (not just an object on
+the graph).  Again, don't worry about option syntax now.
+
+As you can probably figure out, a bar definition is:
+
+  Bar: y_val : name [ : options ]
+
+The name of a bar can be any string (including nothing) that doesn't
+contain \n or :.  You can optionally have a third : followed by
+options for the bar.  The options are discussed later.  Also, note
+that the default color for a bar is black (the default bar color can
+be changed in the .bargraph file, also discussed below).
+
+=head2 ex2 Clusters
+
+Now, that was nice and easy, but any number of tools make simple
+bargraphs without too much trouble.  This next sample file introduces
+Clusters, an aggregate plot type:
+
+=for html
+<a href="ex2.ps">ex2.ps</a> <a href="ex2.gif">ex2.gif</a>
+
+  # ex2.bars
+  Title: Salesman Comparison
+  XAxis:
+  YAxis: Number of widgets sold
+  Key: right+(0.25*inch), top : Legend :
+  Options:   -xlabel 0.25 -keyfirst -rightmargin 2
+  Colors: red blue black
+
+  
+  BeginCluster: 1996
+        Bar: 2: Huey
+        Bar: 1: Dewey
+        Bar: 3: Louie
+  EndCluster
+  
+  BeginCluster: 1997
+        Bar: 1: Huey
+        Bar: 3: Dewey
+        Bar: 2: Louie
+  EndCluster
+
+
+Clusters are a good way to group related bars.  Actually, you can have
+clusters of clusters, clusters of clusters and bars, or whatever.
+I'll leave that for the Examples section.  I take it I don't have to
+describe the cluster syntax, but I'll do it for good measure:
+
+  BeginCluster: name [ : options ]
+    ... Bar/Cluster/StackBar/etc. definitions ...
+  EndCluster
+
+Bet you couldn't figure that one out. :-) Notice that the Cluster
+colored the bars (ie, no -setcolor options, and the bars weren't
+black).  The Cluster gets its idea of what colors to use from the
+Colors: line.  If we were generating a graph in black and white, it
+would use a Grays: line instead.  The Colors: and/or Grays: lines may
+be omitted, in which case it will read these values from the .bargraph
+file (described below).  It defaults to some bright, gaudy colors if
+you don't have a .bargraph file.
+
+=head2 ex3 StackBars
+
+The third plot type is the StackBar.  StackBars are just like clusters
+except that they can only contain bars (ie, no aggregate plots) and
+thay they stack the bars on top of each other.  The same data file as
+above displayed using StackBars is shown below.  It also introduces a
+text object, just for the sake of showing you one.
+
+=for html
+<a href="ex3.ps">ex3.ps</a>  <a href="ex3.gif">ex3.gif</a>
+
+  # ex3.bars
+  Title: Another Salesman Comparison
+  XAxis:
+  YAxis: Number of widgets sold
+  Key: right+(0.125*inch), top ::
+  Options:   -xlabel 0.25 -keyfirst -rightmargin 2
+  
+  BeginStackBar: 1996
+        Bar: 2: Huey
+        Bar: 1: Dewey
+        Bar: 3: Louie
+  EndStackBar
+  
+  BeginStackBar: 1997
+        Bar: 1: Huey
+        Bar: 3: Dewey
+        Bar: 2: Louie
+  EndStackBar
+  
+  Text: right/2,top/2: Hee, Hee: -textalign center -textangle 90
+
+
+The format for a text object is
+
+  Text: x, y: text [: options]
+
+Just like the key, the x and y coordinates are in graph coordinates.
+Also like the key, expressions are allowed, as are the predefined
+values "left", "right", "top", "bottom", and "inch".
+
+One note about StackBars is that negative values are perfectly legal.
+Each new positive bar in a StackBar is placed on top of the stack,
+while each new negative bar is placed below the stack.  The ordering
+of bars with the same sign will affect the order in which the bars are
+stacked, but the ordering between positive and negative bars is
+irrelevant.  Play with it for a minute if you're confused - it's
+rather intuitive, but I don't know how to describe it very well.
+
+There are actually two more object types, called Rect and Line.  If
+you want to draw either of these on the graph, use one of these
+expressions:
+
+  Rect: x1, y1, x2, y2: name [: options]
+  Line: x1, y1, x2, y2: name [: options]
+
+I assume you get the idea.
+
+There's absolutely nothing to stop you from using clusters, stackbars,
+etc. all on the same graph.  In fact, you can have clusters of
+stackbars and bars or other clusters or whatever you can dream up.
+Stackbars, however, may only contian bars (not clusters, other
+stackbars, etc.).  If you can tell me what a stackbar of clusters
+should look like, I'd be very curious.
+
+=head2 Series plots
+
+Well, as you can tell by the name, bargraph began life as a tool that
+makes bargraphs.  It has since grown into a more general plotting
+tool, supporting scatter plots and line graphs.  Note that bargraph
+was designed to deal with relatively small data sets (you wouldn't
+want a bargraph with thousands of bars, for instance), so don't be
+surprised if things don't work out so well if you try to generated
+scatter plots or line graphs with very large data sets.  I refer to
+points and line plots collectively as 'series plots' because they
+share recognize the same options and have many similar properties.
+
+=head2 ex4 Scatter Plot
+
+The most basic series plot is a point.  You can make a simple scatter
+plot by just defining a bunch of points, like I do in ex4.bars.
+
+=for html
+<a href="ex4.ps">ex4.ps</a> <a href="ex4.gif">ex4.gif</a>
+
+  # ex4.bars
+  Title: Very Simple Scatter Plot: -textfont helvetica20b
+  XAxis: X Axis: -labelalign center
+  YAxis: Y Axis: -labelalign center
+  Options: -setcolor blue -setgray 0 -pointsize 10
+  
+  Point: 1, 2:
+  Point: 2, 4:
+  Point: 3, 1: Important Point: -pointlabel name
+  Point: 5, 3:
+  Point: 5, 2:
+
+Notice that I left the name of most of the points out - that just sets
+the name to the empty string.  The same thing is legal for any other
+object definition, but I only got this lazy just now.  I think you can
+figure out the point definition:
+
+  Point: x, y: name [: options]
+
+=head2 ex5 Series Scatter Plot
+
+This is starting to get monotonous.  Anyway, to group related plots,
+use a Series object, which works much like a Cluster or StackBar, as
+ex5.bars shows:
+
+=for html
+<a href="ex5.ps">ex5.ps</a> <a href="ex5.gif">ex5.gif</a>
+
+  # ex5.bars
+  Title: Rather Simple Scatter Plot: -textfont helvetica20b
+  XAxis: X Axis: -labelalign center
+  YAxis: Y Axis: -labelalign center
+  Key: right+(0.25*inch), top: Legend: -keytitlealign center
+  Options: -pointsize 10 -keyall -rightmargin 2 
+  
+  BeginSeries: Series1: 
+    Point: 1, 2:
+    Point: 2, 4:
+    Point: 3, 1: Important Point: -pointlabel name
+    Point: 5, 3:
+    Point: 5, 2:
+  EndSeries
+  
+  BeginSeries: Series2: -pointtype triangle
+    Point: 1, 1:
+    Point: 2, 3:
+    Point: 3, 4: 
+    Point: 4, 2:
+    Point: 5, 5:
+  EndSeries
+
+If you need a description of the Series syntax at this point, then you
+need your head examined.  The only thing interesting about this plot
+is that, as you can tell, the Series are colored.  If you don't supply
+colors for series plots (using the soon-to-be-revealed options), they
+will default to the same colors in the same order that Clusters and
+StackBars use (which can be set in the Colors: line or the .bargraph file).
+
+=head2 ex6 Line Graph
+
+I know I said that bargraph will handle line graphs, too.  Well, how
+are line graphs different from scatter plots?  The dots are connected.
+To create a line graph you also want to use a series, but use the
+correct option to tell bargraph that you want the dots connected.
+Check this out:
+
+
+=for html
+<a href="ex6.ps">ex6.ps</a>  <a href="ex6.gif">ex6.gif</a>
+
+  # ex6.bars
+  Title: Rather Simple Line Graph: -textfont helvetica20b
+  XAxis: X Axis: -labelalign center
+  YAxis: Y Axis: -labelalign center
+  Key: right+(0.25*inch), top: Legend: -keytitlealign center
+  Options: -pointsize 10 -keyall -rightmargin 2 -interpolation line
+  
+  BeginSeries: Series1: 
+    Point: 1, 2:
+    Point: 2, 4:
+    Point: 3, 1: Important Point: -pointlabel name
+    Point: 5, 3:
+    Point: 5, 2:
+  EndSeries
+  
+  BeginSeries: Series2: -pointtype triangle
+    Point: 1, 1:
+    Point: 2, 3:
+    Point: 3, 4: 
+    Point: 4, 2:
+    Point: 5, 5:
+  EndSeries
+
+I don't want to go into the options here (read on if you do), but note
+that the only difference between ex5.bars and ex6.bars is the
+'-interpolation line' on the Options line.  Hmmm.  I wonder if that's
+it.
+
+
+=head1 OPTIONS
+
+The .bars file is really very simple, so most of the complexity in
+creating a graph is setting all of the options.  Of course, they're
+all optional, and the defaults usually look OK, so you should only
+have to deal with options if you want to play with the appearance of
+your graph.
+
+Options are always given at the end of a line in the .bars file and
+are separated from the object's name by a colon.  All options start
+with a dash, and all objects take one argument.  Arguments are
+delimted by spaces.  If you want to specify an argument that contains
+spaces, use a double-quoted string.  You can escape a double-quotes
+within a double quoted string with a '\'.  If no argument is
+specified, then "1" is assumed.  Also, if "foo" is a valid option
+name, then the option "-nofoo" will assume an argument of "0".  If an
+option is mutiply defined on a line, the last setting on the line will
+be used.
+
+Options don't just apply to the objects they are defined for - they
+are also passed down to all contained objects.  The graph contains the
+axes, the title, the key, text objects defined in the .bars file, all
+rects, and the top-level plots (plots that aren't contained in other
+plots).  An aggregate plot (cluster, stackbar, or series) contains all
+plots between the Begin and End.  Plots contain text objects that are
+implicitly created by the "-xlabel" and "-printvalue" options
+(descibed below).  When an object looks for its options, it first
+looks for a value given on specification line.  If the option is not
+defined there, it looks for its immediate container.  If it can't find
+the option there, it looks for that object's container, etc.  If the
+object is not defined anywhere, it uses a default.  Because of this
+arrangement, the graph-level options (the Options: line in the .bars
+file) can be used as defaults for all other objects, since the graph
+includes all other objects.  This all sounds like a mouthful, but it's
+very intuitive once you start using it.  If an option doesn't work for
+all back-ends (ps, tk, and splot), the option description says so.
+
+=head2 Notes on arguments
+
+When a color is called for, use any string from /usr/lib/X11/rgb.txt.
+Case isn't important.  When a gray is called for, use a value between
+0 (black) and 1 (white).  You can also use a color of the format
+0xrrggbb, though this is supported for PostScript only. For fonts, use
+helvetica<n><suffix> or timesroman<n><suffix> where <n> is a number
+from 3-20 and <suffix> is either b (bold), i (italic), both, or
+nothing (normal).  For example, helvetica20bi is 20-point Helvetica in
+bold and italics.  For options that take graph coordinates, these
+coordinates are relative to the origin of the graph.  Options that
+take no arguments are assumed to be boolean options -optionname turns
+it on and -nooptionname turns it off.  Note that GD (the library that
+generates GIFs) does not have good-looking looking fonts, so don't
+expect nice fonts in your GIFs.
+
+=head2 Graph Options
+
+These options are defined for the graph object.  These options
+normally appear on the "Options:" line in the .bars file.  They may
+also appear on the command line (the -options switch).  In the case of
+a conflict, options set on the command line override those set in the
+.bars file.  These options can also be set in the .bargraph file
+(described below), and options in the .bargraph file can be overridden
+by anything in the .bars file or the command line.  Graph options can
+be used as defaults for all other objects since all objects are
+contained (either directly or indirectly) by the graph object.
+
+=over 4
+
+=item -color
+
+Make the graph in color if 1, grayscale if zero.  This can be
+overridden by the command-line option.  Default is 1.
+
+=item -plotspacing I<x_dist>
+
+Spacing between plots.  The width of a bar is 1.  Default is 1.
+
+=item -leftmargin I<inches>
+
+Distance in inches from left side of graph to the edge of the page
+(not in splot).  Default is 1.0.
+
+=item -rightmargin I<inches>
+
+Distance in inches from left side of graph to the edge of the page
+(not in splot).  Default is 0.5.
+
+=item -topmargin I<inches>
+
+Distance in inches from top of the graph to the edge of the page (not
+in splot).  Default is 1.0.
+
+=item -bottommargin I<inches>
+
+Distance in inches from top of the graph to the edge of the page (not
+in splot).  Default is 1.0.
+
+=item -landscape
+
+Generate the graph in landscape mode.  This can be overridden by the
+command-line option.  This can lead to some ugly looking text in -gif
+or -tk mode since those libraries don't permit the arbitrary rotation
+of text.  Caveat user.  Default is 0.
+
+=item -flipscape
+
+Same as landsape, but flips it 180 degrees.  It has the same ugly-text
+problem as -landscape in -gif or -tk modes.  Default is 0.
+
+=item -size I<m>xI<n>
+
+Makes the size of the graph (not including margins) m inches by n
+inches.  Defaults to 5x5.  This can be overridden by the command-line
+option.
+
+=item -resolution I<dpi>
+
+Specfies in dots per inch the resolution of the target display.
+Defaults to 100 dpi.  It is used to compute the size of a pixel when
+specfying line thicknesses and point sizes in pixels.
+
+=item -background I<color>
+
+Sets the background color for the graph.  If generating for splot, you
+must use a splot color (see splot man page).
+
+=item -frame
+
+Draws a frame around the graph.
+
+=item -framethickness I<pixels>
+
+Sets the thickness (in pixels) if the frame.
+
+=item framecolor I<color>
+
+Sets the color if the frame.  Use a splot color if you're generating
+for splot.
+
+=item -keyall 
+
+Add every plot to the key.  This is equivalent to specifying -inkey
+for every plot.
+
+=item -keyfirst 
+
+Add the first plot specified in the .bars file to the key.
+This is equivalent to specifying -inkey for the first plot.
+
+=item -fontencoding I<encoding>
+
+If you need any special (non-default) PostScript font encodings, you
+can specify them here.  Right now, the only supported encoding is
+'ISOLatin1', used for non-English, European characters.
+
+=item All options for Axis, Key, Plot, BarPlot, SeriesPlot, Text,
+Line, and Rect
+
+They don't affect the graph directly, but any of these options, when
+specified to the graph, will act as global defaults.
+
+=back
+
+=head2 Title Options
+
+The Title object is just a normal Text object, with the
+exception that it defaults to center alignment instead of left
+alignment.  Specify options they way you would for any Text
+object (described below).
+
+=head2 Axis Options
+
+The axes do a nice job of autoscalng themselves, but in case you want
+to mess with them, here's your chance.  You specify these options on
+the XAxis: or YAxis: lines.  You can give them in the global graph
+options (Options: line), and they will affect both axes.
+
+=over 4
+
+=item -invisible
+
+Make the axis invisible.
+
+=item -numeric
+
+If 1, it print the axis intervals & tics.  Otherwise, don't do it.
+-numeric defaults to 1 for the y-axis.  It defaults to 0 for the
+x-axis unless there are any Point or Series plots, in which case it
+defaults to 1.
+
+=item -position I<coord>
+
+Set the position of where to draw the axis in the coordinates of the
+other axis.  The special coordinates I<min> and I<max> can be used to
+indicate the minimum/maximum coordinate displayed.  The default vale
+of -position is I<min>.
+
+=item -setmin I<val>
+
+Make val the minimum axis value instead of autoscaling.
+
+=item -setmax I<val>
+
+Make val the maximum axis value instead of autoscaling.
+
+=item -looseness I<fraction>
+
+Multiply the length of the axis computed by autoscaling by
+(1+fraction) to avoid having the plots run to the very edges of the
+graph.  Defaults to 0.15.
+
+=item -precision I<digits>
+
+Specify how many decimal places to use when printing interval values
+on the axis.  The overrides the autoscaled value.
+
+=item -format I<format_string>
+
+Specify a printf-style format string for printing interval values.
+This overrides any precision settings.  (not in splot)
+
+=item -interval I<dist>
+
+Distance between tics.  Overrides autoscaled value.
+
+=item -ticfont I<font>
+
+Font to print the numeric tic labels
+
+=item -grid
+
+Draw lines across the graph instead of small tics.
+
+=item -labelfont I<font>
+
+Font for axis label.
+
+=item -labelalign I<left|center|right>
+
+Where on the axis to print the label.  For the y axis, the
+label is rotated 90 degrees, so left is down and right is up.
+
+=item -labeldist I<inches>
+
+How far from the axis in inches to print the label.
+
+=item -thickness I<pixels>
+
+Thickness of the axis in pixels.
+
+=item -clipmin
+
+If true, do not allow bars to draw beyond the min value of the axis
+(defaults to false).
+
+=item -clipmax
+
+If true, do not allow bars to draw beyond the max value of the axis
+(defaults to false).
+
+=back
+
+=head2 Key Options
+
+If you want to make a key/legend, specify a Key: line in the .bars
+file.  These options can be used on that line.  Note that just
+specifying a Key: line will NOT add any plots to the key.  You still
+must specify the -inkey Plot option to any plots that you want in the
+key or use the graph options -keyall or -keyfirst.
+
+=over 4
+
+=item -horizontal
+
+When true, layout the key horizontally.  Defaults to 0 (false).
+
+=item -elemwidth I<inches>
+
+Set the width in inches of the rectangles drawn for each element in
+the key (default = 0.25).
+
+=item -elemheight I<inches>
+
+Set the height in inches of the rectangles drawn for each element in
+the key (default = 0.25).
+
+=item -elemfullwidth I<inches>
+
+When laying out the key horizontally, it uses elemfullwidth to
+control the spacing between elements.  It should be >= elemwidth to
+avoid overlap (default = 1.0).
+
+=item -elemfullheight I<inches>
+
+When laying out the key vertically, it uses elemfullheight to
+control the spacing between elements.  It should be >= elemwidth to
+avoid overlap (default = 0.25).
+
+=item -elemlabelpos I<top|center|bottom>
+
+Vertically position label text on the rectangle drawn for each element
+in the key.  Defaults to I<center>.
+
+=item -elemoutlinecolor I<color>
+
+Color of the outline of the box drawn around each element.  Defaults
+to 'black'.
+
+=item -elemoutlinegray I<gray>
+
+Gray value of the outline of the box drawn around each element.
+Defaults to 0.0 (black).
+
+=item -elemoutlinethickness I<pixels>
+
+Thickness (in pixels) of the outline around each element.  Defaults to
+1
+
+=item -elemtexttab  I<inches>
+
+Space between element box and its label.  Defaults to 0.125.
+
+=item -keywidth I<inches>
+
+How wide to make the key frame when laying out the key vertically.
+
+=item -keyheight I<inches>
+
+How tall to make the key frame when laying out the key horizontally.
+
+=item -keytitlefont I<font>
+
+Does the obvious.
+
+=item -keytitlealign I<left|center|right>
+
+Aligns the title in the key frame.  Defaults to 'center'.
+
+=item -keyframe
+
+Boolean value determines whether or not a frame is drawn around the
+key.  Defaults to 1.
+
+=item -keyleftmargin I<inches>
+
+Distance from left side of key to the elements.  Defaults to 0.125.
+
+=item -keytopmargin I<inches>
+
+Distance from top of the key to the elements.  If the key has a title,
+then this is the distance from the bottom of the title to the first
+tlement.  Defaults to 0.125.
+
+=item -keybottommargin I<inches>
+
+Distance from bottom of the elements to the bottom of the key when
+laying out the key vertically.  Defaults to 0.125.
+
+=item -keyrightmargin I<inches>
+
+Distance from rightmost element to the edge of the key whey laid out
+in horizontal mode.  Defaults to 0.125.
+
+=item Any Rect Options
+
+Specify how the frame is drawn.
+
+=item Any Text Options
+
+Specify how the labels for each element should be drawn.  Note that
+-textvalign options will be ignored because they are set implicitly by
+-elemlabelpos.
+
+=back
+
+=head2 Plot Options
+
+These options work for ALL plots: Bars, Clusters, StackBars, Points,
+and Series.  Container objects (Clusters, Stackbars, and Series) pass
+their options down to their composite plots, which is generally what
+you want.
+
+=over 4
+
+=item -setcolor I<color>
+
+Set the color of the plot.  This overrides whatever
+default coloring scheme would have been used.
+
+=item -setgray I<gray>
+
+Same as -setcolor, but used in grayscale mode (-nocolor for the
+graph).  gray is a value between 0 (black) and 1 (white).
+
+=item -inkey
+
+Include this plot in the key.  Does nothing unless there is a Key:
+line in the .bars file.  This option can be an exception to the rule
+that containing objects pass their options down to their containers.
+If -inkey is defined for a Series, it is NOT passed on to the
+contained plots, although Clusters and StackBars do pass it on.  This
+is because in a series, you are very unlikely to actually want every
+point in the series to be in the key.
+
+=item -description I<string>
+
+When running the Tk previewer, print this string to stdout when the
+plot is clicked on.  If this option is not specified, the name of the
+plot is used.
+
+=item Any Text Options
+
+Specify how any text labels associated with a plot (like value labels
+or xlabels) should be drawn.  These are overridden by more specific
+options: -xlabelalign overrides -textalign, for instance.  
+
+=back
+
+
+=head2 BarPlot Options
+
+These options work for bar and bar-containing plots: bars, clusters,
+and stackbars.  Be aware that clusters and stackbars pass their
+options down to composite plots.
+
+
+=over 4
+
+=item -widthmargin I<fraction>
+
+Shave off this fraction of the bar (or every contained bar for a
+cluster or stackbar) from the left and right.  If you think your bars
+are getting close together and you don't like that, this might be the
+option for you.
+
+=item -xlabel I<dist>
+
+Label this plot I<dist> inches below the graph.  This implicitly
+creates a text object and converts any -xlabelfont, -xlabelangle,
+-xlabelalign, or -xlabelvalign options into -textfont, -textangle, or
+-textalgin options for it.  -xlabel is one of the only exceptions to
+the rule (-valuetext is another) that objects can get options from
+their containers.  Clusters and stackbars will NOT pass -xlabel
+options to their contained plots.  This is probably what you want.
+Note that if you don't want an xlabel, it must be undefined, not zero
+("-xlabel none" will accomplish this).  Zero means to print the label
+right at the bottom of the graph.  It's much easier to use than to
+explain.
+
+=item -xlabelfont I<font>
+
+Sets the font for the xlabel.  This overrides any -textfont options
+that would otherwise affect the xlabel.
+
+
+=item -xlabelalign I<left|center|right>
+
+The x_coordinate of the label is the center of the bar.  This
+specifies how to align the label about that point.  It overrides any
+-textalign options that would otherwise affect the xlabel.
+
+=item -xlabelvalign I<top|center|bottom>
+
+The x_coordinate of the label is the center of the bar, and the y
+coordinate corresponts to the argument of the -xlabel option.  This
+specifies how to align the label (top to bottom) about that point.  It
+defaults to center.  It overrides any -textalign options that would
+otherwise affect the xlabel.
+
+=item -xlabelangle I<angle>
+
+Rotate the xlabel by this angle counter-clockwise about the alignment
+point.  This overrides any -textangle options that woud otherwise
+affect the xlabel. (tk and gif only will honor angles of 0 or 90)
+
+=item -printvalue
+
+Print a value label just above the bar with the bar's value.  It
+implicitly creates a text object and converts -valuefont, -valuealign,
+-valuevalign, and -valueangle options into -textfont, -textalign, and
+-textangle options.
+
+=item -valuefont I<font>
+
+Sets the font for the valuelabel.  It overrides any -textfont options
+that would normally affect it.
+
+=item -valuealign I<left|center|right>
+
+The x_coordinate of the valuelabel is the center of the bar.  This
+specifies how to align the valuelabel about that point.  It overrides
+any -textalign options that would otherwise affect the valuelabel.
+
+=item -valuevalign I<top|center|bottom>
+
+The x_coordinate of the label is the center of the bar.  This
+specifies how to align the label (top to bottom) about that point.  It
+defaults to center.  It overrides any -textalign options that would
+otherwise affect the valuelabel.
+
+
+=item -valueangle I<angle>
+
+Specify how many degrees counter-clockwise to rotate the valuelabel
+about the alignment point.  This overrides any -textangle options that
+would otherwise affect the valuelabel. (tk and gif only will honor
+angles of 0 or 90)
+
+=item -valuetext I<text>
+
+Use the specified text instead of the plot's value when creating the
+value label.  Like -xlabel, -valuetext is NOT propagated down to
+contained plots.
+
+=item -borderthickness I<thickness>
+
+Draw a black border with the specified thickness around the bar.  This
+options works with PostScript, Gif, and Tk, although a borderthickness
+of 0 is not honored by Tk.
+
+=item -pattern I<pattern>
+
+Use the specified pattern when painting the bar.  This is a
+PostScript-only option.  Moreover, it generates PostScript Level 2
+constructs, which may be a problem on older printers.  The acceptable
+pattern names are, "fill", "box", "left", "right", "x", "vert",
+"horiz", and "stars".  The "fill" pattern just pains solid colors and
+is the default.  The default pitch of the pattern is 5 pixels, but
+this can be changed by appending a _num to the pattern name.  In other
+words, "-pattern stars_10" will create a pattern that is twice as big
+as the default stars pattern.  Just play with it, and you'll see how
+it works.
+
+=item -subplotspacing I<x_dist>
+
+Controls the spacing between sub-plots.  Currently, this is only used
+for clusters.  The x_dist is in units of bar widths, and the default
+is 0.  This does the same thing for plots within clusters that the
+graph option -plotspacing does for top-level plots.
+
+=item -autocolor
+
+If this is set, then bargraph will choose a color/gray value from its
+list of colors or gray values.  The default is 0 for single bars and 1
+for bars inside containers (clusters or stackbars).
+
+=item Any Text Option
+
+These are passed to any xlabels and/or valuelabels.  They are
+overridden by xlabel and valuelabel specific options.
+
+=back
+
+=head2 SeriesPlot Options
+
+These options are good for Points and Series.  Note that options
+defined for a Series will also apply to all Points in that series
+(unless the Points override the settings).
+
+=over 4
+
+=item -pointsize I<size>
+
+Specify how big to make a point in pixels.  The symbol used for the
+point will fit in a box that is I<size>xI<size> pixels, centered
+around the point.  The size of a pixel is determined by the resolution
+option of the graph.
+
+=item -pointtype I<type>
+
+Specify a symbol for displaying points.  Legal values are: 'square',
+'triangle', 'plus', 'x', and 'none'.  Default is 'square'.
+
+=item -interpolation I<scheme>
+
+Useful only for Series (Points ignore it).  The I<scheme> describes
+how to connect the Points in the Series.  Legal values are 'none',
+'line', and 'step'.  This is how you differentiate between line graphs
+and scatter plots.  The 'step' scheme, by the way, connects the two
+points using a staircase.  In other words, to connect points (x1, y1)
+to (x2, y2), it would draw two lines: one from (x1, y1) to (x2, y1)
+and the other from (x2, y1) to (x2, y2).
+
+=item -linethickness I<thickness>
+
+If you're using an interpolation scheme of 'line' or 'step', this
+controls the thickness of the lines in pixels.  Default is 1.  This
+option does not work in splot mode.
+
+=item -pointlabel I<[type]>
+
+Specifies that this *Point* should be labelled (if given to a series,
+it specifies that all points in the series should be labelled).  The
+optional I<type> argument describes what should be used as the label.
+If it is omitted, or if it is 'value', then the y-coordinate of the
+point is used.  If it is 'name', then the name of the point is used.
+If you want something else as the label, set I<type> to anything
+(including omitting it), and also supply the -pointlabeltext option to
+specify a string.  You still need -pointlabel, though, to tell the
+point to use a label at all.
+
+=item -pointlabeltext I<string>
+
+Set a string to be used as the label for this Point.  It has no effect
+unless -pointlabel is also given.  If -pointlabeltext is supplied, it
+overrides what ever label -pointlabel would have given this point.
+
+=item -pointlabeldist I<length_in>
+
+Specifies how far from the point (in inches) to display the label.
+Defaults to 0.125.
+
+=item -pointlabelpos I<angle_from_north>
+
+Specify angle from north at which to place the label.  For instance,
+if you set '-pointlabelpos 90', the label will appear directly to the
+right of the point.  Defaults to 45.
+
+=item -pointlabelfont I<font>
+
+Sets the font for the pointlabel.  It overrides any -textfont options
+that would normally affect it.
+
+=item -pointlabelalign I<left|center|right>
+
+Specifys how to align the text about the point named by
+-pointlabeldist and -pointlabelpos.  It overrides any -textalign
+options that would otherwise affect the pointlabel.
+
+=item -pointlabelvalign I<top|center|bottom>
+
+Specifys how to align the text (top to bottom) about the point named
+by -pointlabeldist and -pointlabelpos.  It overrides any -textalign
+options that would otherwise affect the pointlabel.
+
+=item -pointlabelangle I<angle>
+
+Specify how many degrees counter-clockwise to rotate the pointlabel
+about the alignment point.  This overrides any -textangle options that
+would otherwise affect the pointlabel. (tk and gif only will honor
+angles of 0 or 90)
+
+=back
+
+=head2 Text Options
+
+At last, something really simple.
+
+=over 4
+
+=item -textfont I<font>
+
+Sets the font for the text.
+
+=item -textalign I<left|center|right>
+
+Specifies the alignment of the text about its x-y coordinates.
+
+=item -textvalign I<top|center|bottom>
+
+Specifies the alignment of the text (top to bottom) about its x-y
+coordinates.  It defaults to bottom.
+
+=item -textangle I<angle>
+
+Rotate the text by this angle (in degrees) counterclockwise about it's
+alignment point. (tk and gif only will honor angles of 0 or 90)
+
+=back
+
+=head2 Rect Options
+
+These let you specify options for framed rectangles.  Note that
+whether -outlinecolor or -outlinegray (or -fillcolor/-fillgray) is
+used depends on whether the graph is being generated for color or
+grayscale (the value of the Graph option -color).
+
+=over 4
+
+=item -outlinecolor I<color>
+
+Sets the color of the rectangle frame.
+
+=item -outlinegray I<gray>
+
+Sets the grayscale of the rectangle frame.
+
+=item -outlinethickness I<pixels>
+
+Sets the width of the frame in pixels.
+
+=item -fillcolor I<color>
+
+Sets the fill color for the rectangle.  If fillcolor is 'transparent',
+the rectangle is not filled in.
+
+=item -fillgray I<gray>
+
+Sets the fill gray for the rectangle.
+
+=back
+
+=head2 Line Options
+
+These options apply to Line objects that you might want to
+instantiate.
+
+=over 4
+
+=item -linecolor I<color>
+
+I bet you'll never guess what this does.  Default color is black.
+
+=item -linegray I<gray>
+
+In -nocolor mode, sets the gray value. 0 is black and 1 is white.
+Defaults to black.
+
+=item -lineobjthickness I<thickness_pixels>
+
+The thickness in pixels of the line.  It has the weird name to
+differentiate if from the SeriesPlot option -linethickness.  Defaults
+to 1.
+
+=back
+
+=head1 EXAMPLES
+
+=head2 ex7 CPI Graph
+
+Here's a sample file that puts together a lot of different options.
+As complicated as it may look, it's fantastically simple to
+autogenerate .bars files like this. By the way, these numbers are all
+made up, so don't ask me anything about the wonderful prefetching
+stategies.
+
+=for html
+<a href="ex7.ps">ex7.ps</a>  <a href="ex7.gif">ex7.gif</a>
+
+  # ex7.bars
+  Title: CPI Graph: -textfont helvetica15b
+  XAxis:
+  YAxis: CPI: -labelfont helvetica15b -labelalign center -grid
+  Key: right+(0.25*inch), top: Legend: -keytitlealign center
+  Options: -frame -rightmargin 2 -bottommargin 2 -topmargin 1 \
+          -printvalue -valuefont helvetica8 -valueangle 90 -valuealign left
+  
+  BeginCluster: Config 1: -xLabel 1.50 
+  BeginStackBar: No Prefetching : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base : -inkey 
+  Bar: 0.5651 : Instn : -inkey 
+  Bar: 0.4431 : Data : -inkey 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 1 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.3843 : Instn 
+  Bar: 0.5131 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 2 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.5620 : Instn 
+  Bar: 0.3232 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 3 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.6843 : Instn 
+  Bar: 0.2322 : Data 
+  EndStackBar
+  
+  
+  
+  EndCluster
+  
+  
+  BeginCluster: Config 2: -xLabel 1.50 
+  BeginStackBar: No Prefetching : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.5574 : Instn 
+  Bar: 0.3234 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 1 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.1234 : Instn 
+  Bar: 0.5663 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 2 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.3432 : Instn 
+  Bar: 0.5342 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 3 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.2345 : Instn 
+  Bar: 0.2344 : Data 
+  EndStackBar
+  
+  
+  
+  EndCluster
+  
+  
+  BeginCluster: Config 3: -xLabel 1.50 
+  BeginStackBar: No Prefetching : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.3182 : Instn 
+  Bar: 0.4642 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 1 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.2106 : Instn 
+  Bar: 0.4841 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 2 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.1894 : Instn 
+  Bar: 0.4810 : Data 
+  EndStackBar
+  
+  
+  BeginStackBar: Strategy 3 : -xlabel 0.25 -xlabelfont helvetica8 \
+          -xlabelalign right -xlabelangle 90
+  Bar: 1.0000 : Base 
+  Bar: 0.1783 : Instn 
+  Bar: 0.4813 : Data 
+  EndStackBar
+  
+  EndCluster
+
+=head2 ex8 Signed Accuracies
+
+Here's another example.  This one includes clusters and negative
+values.  Thanks to Dave Ofelt for contributing this one.  The gif is
+not included because this is a landscape graph, and the GD library
+(which generates the gifs) doesn't do arbitrary text rotations, so
+text looks bad on landscape graphs (see -landscape documentation).
+
+=for html
+<a href="ex8.ps">ex8.ps</a>
+
+  # ex8.bars
+  Title: Signed Accuracies path.1
+  XAxis: Benchmark : -labeldist 1.5 -position 0
+  YAxis: Accuracy : 
+  Key: right-(0.5*inch), top: Legend: -keywidth 1 -keytitlealign center
+  Options: -landscape -size 9x5 -keyfirst -xlabel 0.1 -xlabelangle 90 -xlabelalign right
+  BeginCluster: 008.espresso
+          Bar: 7.21994634581076 : p
+          Bar: 2.91651187879971 : rb
+          Bar: 6.01604964196798 : ri
+          Bar: 0.236182165248477 : rd
+          Bar: -3.75509872910472 : rall
+  EndCluster
+  BeginCluster: 013.spice2g6
+          Bar: 1.93064611191953 : p
+          Bar: -0.875099614141395 : rb
+          Bar: 1.87302674515113 : ri
+          Bar: 0.110036626237897 : rd
+          Bar: -1.27057618853105 : rall
+  EndCluster
+  BeginCluster: 015.doduc
+          Bar: 9.20072523231399 : p
+          Bar: 8.52396568604419 : rb
+          Bar: 7.08361258404677 : ri
+          Bar: 6.96210989479864 : rd
+          Bar: 4.42711326180885 : rall
+  EndCluster
+  BeginCluster: 022.li
+          Bar: 3.65203102180518 : p
+          Bar: 2.42282701462826 : rb
+          Bar: 3.15563306827675 : ri
+          Bar: -3.96622063213196 : rd
+          Bar: -4.81820427261216 : rall
+  EndCluster
+  BeginCluster: 026.compress
+          Bar: 5.56876958770596 : p
+          Bar: 0.747611603265597 : rb
+          Bar: 5.40809080187232 : ri
+          Bar: 4.2408008145284 : rd
+          Bar: -2.54629305563393 : rall
+  EndCluster
+  BeginCluster: 034.mdljdp2
+          Bar: -0.60094661920449 : p
+          Bar: -1.19942821350622 : rb
+          Bar: -0.615464421232192 : ri
+          Bar: -4.96012463562927 : rd
+          Bar: -5.41960514750469 : rall
+  EndCluster
+  BeginCluster: 039.wave5
+          Bar: 0.700052924227634 : p
+          Bar: 0.73271902458647 : rb
+          Bar: 0.435016309322633 : ri
+          Bar: -5.17171881768641 : rd
+          Bar: -5.30789825185712 : rall
+  EndCluster
+  BeginCluster: 047.tomcatv
+          Bar: 0.0350098724900327 : p
+          Bar: 0.125584473026996 : rb
+          Bar: 0.0145979025590437 : ri
+          Bar: -4.66222885167481 : rd
+          Bar: -4.66386989646473 : rall
+  EndCluster
+  BeginCluster: 048.ora
+          Bar: 0.382060880990154 : p
+          Bar: 0.763471645723857 : rb
+          Bar: 0.369880104512688 : ri
+          Bar: 0.0778891831247464 : rd
+          Bar: 0.419288767149362 : rall
+  EndCluster
+
+=head2 ex9 Timing Diagram
+
+Here's a line graph showing a timing diagram.  It uses step
+interpolation.
+
+=for html
+<a href="ex9.ps">ex9.ps</a> <a href="ex9.gif">ex9.gif</a>
+
+  # ex9.bars
+  Title: 2-bit Counter: -textfont helvetica20b
+  XAxis: Time: -labelalign center -grid
+  YAxis: Signals: -labelalign center  -nonumeric
+  Key: right+(0.25*inch), top: Legend : -keytitlealign center
+  
+  Options: -keyall -rightmargin 2 -pointsize 10 -interpolation step -pointtype none -linethickness 2
+  
+  BeginSeries: Clock : -setcolor red 
+    Point: 0, 10: Point
+    Point: 1, 9: Point
+    Point: 2, 10: Point
+    Point: 3, 9: Point
+    Point: 3, 9: Point
+    Point: 4, 10: Point
+    Point: 5, 9: Point
+    Point: 6, 10: Point
+    Point: 7, 9: Point
+    Point: 8, 10: Point
+  EndSeries
+  
+  BeginSeries: HiBit: -setcolor black
+    Point: 0, 5:
+    Point: 2.2, 6:
+    Point: 4.2, 5:
+    Point: 6.2, 6:
+    Point: 8, 6:
+  EndSeries
+  
+  BeginSeries: LoBit: -setcolor blue
+    Point: 0, 1:
+    Point: 1.1, 2:
+    Point: 2.1, 1:
+    Point: 3.1, 2:
+    Point: 4.1, 1:
+    Point: 5.1, 2:
+    Point: 6.1, 1:
+    Point: 7.1, 2:
+    Point: 8, 2:
+  EndSeries
+
+=head2 ex10 Net Worth
+
+Here's an example of a graph that uses Bars and Series on the same
+graph.  It's a little tricky to know what x-coordinates to use for the
+series (since you don't know where the bars are), but you can always
+just make a bar graph and set the xaxis to numeric to do it by trial
+and error.  This is a Quicken-inspired net worth graph.
+
+=for html
+<a href="ex10.ps">ex10.ps</a> <a href="ex10.gif">ex10.gif</a>
+
+  # ex10.bars
+  Title: Net Worth Graph: -textfont helvetica20b
+  XAxis: Month: -labelalign center -position 0 -nonumeric
+  YAxis: Dollars (x 1000): -labelalign center -format "$ %.0f"
+  Key: (right+0.25*inch), top: Legend: -keytitlealign center
+  Options: -rightmargin 2  -xlabel 0.25 -keyfirst -frame  -grid
+  
+  BeginStackBar: January 
+  Bar: -1: Debt : -setcolor red 
+  Bar: 5: Credits: -setcolor green
+  EndStackBar
+  
+  BeginStackBar: February
+  Bar: -2: Debt: -setcolor red
+  Bar: 4: Credits: -setcolor green
+  EndStackBar
+  
+  BeginStackBar: March
+  Bar: -3.1: Debt: -setcolor red
+  Bar: 6: Credits: -setcolor green
+  EndStackBar
+  
+  BeginSeries: net worth: -setcolor blue -interpolation line -pointtype x -pointsize 10 -pointlabel
+  Point: 1.5, 4: Net Worth: -inkey
+  Point: 3.5, 2: Net Worth: 
+  Point: 5.5, 2.9: Net Worth:
+  EndSeries
+
+=head2 ex11 Patterns
+
+This is the same as ex2, except that it uses fill patterns for the
+bars.  This is a PostScript-only feature:
+
+=for html
+<a href="ex11.ps">ex11.ps</a>
+
+  # ex11.bars
+  Title: Salesman Comparison
+  XAxis:
+  YAxis: Number of widgets sold
+  Key: right+(0.25*inch), top : Legend :
+  Options:   -xlabel 0.25 -keyfirst -rightmargin 2
+  
+  BeginCluster: 1996
+          Bar: 2: Huey  : -pattern x
+          Bar: 1: Dewey : -pattern fill
+          Bar: 3: Louie : -pattern stars_10
+  EndCluster
+  
+  BeginCluster: 1997
+          Bar: 1: Huey  : -pattern x
+          Bar: 3: Dewey : -pattern fill
+          Bar: 2: Louie : -pattern stars_10
+  EndCluster
+
+Send me mail if you have interesting-looking .bars files that would
+make good examples.  I'm too lazy to make more myself.
+
+=head1 .bargraph PARAMETER FILES
+
+When bargraph runs, it tries to find a defaults file.  If C<-f> is
+given or the environment variable BARGRAPH_DEFAULTS is set, it looks
+there to find a defaults file.  It is an error for a C<-f> option to
+be given or BARGRAPH_DEFAULTS to be set and to not be able to load the
+file.  If neither of these are set, bargraph will look for a defaults
+file called ./.bargraph, and if that doesn't exists for .bargraph in
+your home directory. If it doesn't find it there, it gives up and uses
+defaults.  Under MacPerl, the .bargraph file must be in the same
+directory as the bargraph application or it will not be found.  The
+file is very simple.  Here's an example:
+
+  colors: blue green red yellow black brown
+  grays: 0.0 0.2 0.4 0.6
+  defaultColor: orange
+  options: -rightmargin 2
+
+All lines are optional.  The colors: line sets the colors in order to
+use for a cluster.  In this example, the first bar in a cluster will
+be blue, the second green, etc., and the sixth one brown.  The seventh
+bar will be blue.  Get the idea?  grays: works the same way but with
+gray values.  defaultColor is the color used to color bars that don't
+have any other way of getting a color (ie, aren't part of a cluster or
+stackbar and don't have a -setcolor option).  It defaults to black.
+The options: line specifies default options to use for the graph.  It
+acts as if these options were at the very beginning of the Options:
+line in each .bars file.  If there is a conflict between options in
+the .bargraph and the .bars files, the .bars file options will have
+precedence over .bargraph options.
+
+=head1 BUGS
+
+Send me mail if you find one.
+
+=head1 COPYRIGHT
+
+Copyright (C) 1997, 1998, 1999 Jeff Gibson
+
+These coded instructions, statements, and computer programs contain
+unpublished proprietary information of Jeff Gibson, and are protected
+by Federal copyright law.  They may freely copied, but may not sold
+without the prior, written consent of Jeff Gibson.
+
+=head1 AUTHOR
+
+Jeff Gibson <jeffg@labrat.stanford.edu>
+
+=head1 SEE ALSO
+
+perl(1).
+
+=cut

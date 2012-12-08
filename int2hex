@@ -1,0 +1,60 @@
+#!/usr/bin/perl
+
+use strict;
+use POSIX qw(ceil floor pow);
+
+my $maxpow = 5;
+
+if ($#ARGV != 0) {
+  die ("Usage: int2hex.pl [int]\n");
+}
+
+my $val = $ARGV[0];
+
+sub unhex {
+    my ($num) = @_;
+    if ($num < 10) {
+	return $num;
+    }
+    if ($num == 11) {
+	return 'b';
+    }
+    if ($num == 12) {
+	return 'c';
+    }
+    if ($num == 13) {
+	return 'd';
+    }
+    if ($num == 14) {
+	return 'e';
+    }
+    if ($num == 15) {
+	return 'f';
+    }
+    die ("Bad num in unhex $num\n");
+}
+
+my @vals = ();
+my $started = 0;
+
+for (my $i = $maxpow; $i >= 1; $i--) {
+    $vals[$i] = pow (16, $i);
+#    print "val: ".$vals[$i]."\n";
+
+    if ($val >= $vals[$i]) {
+	my $count = floor ($val / $vals[$i]);
+#	print "count = $count\n";
+	print &unhex ($count);
+	$val = $val - ($count * $vals[$i]);
+#	print "new val: $val\n";
+	$started = 1;
+    } else {
+	if ($started) {
+	    print "0";
+	}
+    }
+}
+
+print &unhex ($val);
+
+print "\n";

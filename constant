@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Getopt::Std;
+
+my $usage = "Usage: constant\n".
+  "         -n [number of samples]\n".
+  "         -m [mean]".
+  "  Structured to look like e.g. poisson\n";
+
+my %para = ();
+
+getopts('n:m:', \%para);
+
+if ( (!defined($para{'n'}))||(!defined($para{'m'}))) {
+  print "$usage\n";
+  exit (-1);
+}
+my $mean = $para{'m'};
+my $sample = $para{'n'};
+
+for (my $i = 0; $i < $sample; $i++) {
+  print "$mean\n";
+}

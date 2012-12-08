@@ -1,0 +1,9 @@
+#!/usr/bin/perl
+
+use strict;
+
+while (my $line = <STDIN>) {
+    next if ($line =~ /^\#/);
+    next if ($line =~ /^\s+$/);
+    print $line;
+}

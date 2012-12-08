@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $usage =  "Usage: cat [datafile] | divide [divisor] [numerator column]\n";
+
+my $divisor = 0;
+if ($#ARGV != 1) {
+    print "Bad Argument Count: $#ARGV\n";
+    print "$usage";    
+    exit (0);
+}
+
+$divisor = $ARGV[0];
+my $numerator = $ARGV[1];
+
+if ($divisor == 0 || $numerator < 0) {
+    print "Bad Divisor or Numerator\n";
+    print "$usage";
+    exit (0);
+}
+
+
+while (my $line = <STDIN>) {
+  my (@items) = split (/\s+/, $line);
+  my $res = $items[$numerator] / $divisor;
+  $line =~ s/\s+$//;
+  print "$line $res\n";
+}
+

@@ -1,0 +1,57 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+# usage: takes lines of the form
+# 0      24
+# 1      85
+# 2      88
+# ...
+# 0      5
+# 1      6
+# 2      7
+#
+# and outputs 
+# 0      24    5
+# 1      85    6
+# ...     
+
+my $usage = "Usage: cat file1 file2 | mergeFiles [options] > resullt\n";
+$usage .=   "           -i character(s) to put in between columns\n";
+$usage .=   "           -e character(s) to put at end\n";
+$usage .=   "Example:\n";
+$usage .=   "   cat foo/a foo/b | mergeFiles -i '&' -e '\\'";
+my %para = ();
+getopts('i:e:h', \%para);
+
+if (defined($para{'h'})) {
+    print "$usage\n";
+    exit (0);
+}
+
+my @entries = ();
+
+while (my $line = <STDIN>) {
+    if ($line =~ /^\s*(\d+)\s(.*?)$/) {
+#	print "line match $1 foo $2";
+	my $index = $1;
+	my $value = $2;
+	if (defined($para{'i'})) {
+	    $entries[$index] .= $para{'i'};
+	}
+	$entries[$index] .= $value;
+    } else {
+	print "no match $line\n";
+	;
+    }
+}
+
+for (my $i = 0; $i <= $#entries; $i++) {
+    print "$i $entries[$i]";
+    if (defined($para{'e'})) {
+	print "$para{'e'}";
+    }
+    print "\n";
+}
+

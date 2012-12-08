@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my $usage = "Usage: cat file | values\n";
+$usage .=   "           -k print the key before printing the values\n";
+$usage .=   "Assumes: key value newline\n";
+
+my %para = ();
+getopts('k', \%para);
+
+#if (defined($para{'k'})) {
+#    $key = $para{'k'};
+#}
+
+my %data = ();
+
+my $count = 0;
+while (my $line = <>) {
+    next if ($line =~ /^\#/);
+    next if ($line =~ /^\s+$/);
+    my @items = split (/\s+/, $line);
+
+    my $key = $items[0];
+    my $value = $items[1];
+
+    next if (!defined($key));
+    next if (!defined($value));
+
+    if (!defined ($data{$key})) {
+	my @values = ();
+	$data{$key} = \@values;
+    }
+    my $values = $data{$key};
+    $values->[$#$values+1] = $value;
+    $count++;
+}
+
+foreach my $key (sort {$a <=> $b} keys %data) {
+    my $out = '';
+    if (defined($para{'k'})) {
+	$out .= "$key ";
+    }
+    my $values = $data{$key};
+    $out .= join (" ", sort {$a <=> $b} @$values);
+    printf ("$out\n");
+}
+
+

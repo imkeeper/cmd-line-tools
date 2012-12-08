@@ -1,0 +1,33 @@
+#!/usr/bin/perl
+
+use strict;
+
+# $Id:$
+
+use Getopt::Std;
+
+
+my $usage = "Usage: cat-skip file\n";
+$usage .=   " -s skip N header lines, default = 1";
+$usage .=   " -i include lines that begin with a hash, otherwise do not";
+
+my %para = ();
+getopts('s:i', \%para);
+
+my $skip_count = 1;
+my $include_hash = 0;
+
+if (defined($para{'s'})) {
+    $skip_count = $para{'k'};
+}
+if (defined($para{'i'})) {
+    $include_hash = 1;
+}
+
+my $count = 0;
+while (my $line = <>) {
+    $count++;
+    next if ($count <= $skip_count);
+    next if ($line =~ /^\#/ && $include_hash == 0);
+    print $line;
+}

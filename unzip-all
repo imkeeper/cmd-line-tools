@@ -1,0 +1,14 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $fileList = `ls -1 *.gz`;
+my @files = split (/\s+/, $fileList);
+
+print "@ARGV\n";
+
+foreach my $file (@files) {
+    print "$file";
+    my $res = `gzip -d @ARGV $file`;
+    print "$res\n\n";
+}

@@ -1,0 +1,32 @@
+#!/usr/bin/perl
+
+use strict;
+
+if ($#ARGV != 0) {
+    print "Usage: psletter file.ps";
+    exit (-1);
+}
+
+my $filename = $ARGV[0];
+
+print "$filename\n";
+
+my $newfile = "$filename".".new";
+
+open OUT, ">$newfile" or die "Cannot open $newfile for writing\n";
+
+my $firstSlash = 0;
+open IN, $filename or die "Cannot open $filename for reading";
+while (my $line = <IN>) {
+    if (!$firstSlash && $line =~ /^\//) {
+	print OUT '/letter {'."\n".'(<<) cvx exec /PageSize [612 792] /ImagingBBox null (>>) cvx exec'."\n".'setpagedevice } bind def'."\n";
+	$firstSlash = 1;
+    }
+    print OUT $line;
+}
+close IN;
+
+close OUT;
+
+unlink $filename;
+rename $newfile, $filename;

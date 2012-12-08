@@ -1,0 +1,56 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use Statistics::Descriptive;
+
+my $usage = "Usage: cat file | percentile -p [0..100] > result\n";
+
+my %para = ();
+
+getopts('p:', \%para);
+if ( (!defined($para{'p'}))) {
+  print "$usage\n";
+  exit (-1);
+}
+
+my $percentile = $para{'p'};
+
+if ($percentile < 0 || $percentile > 100) {
+  print "$usage\n";
+  exit (-1);
+}
+
+my $key = 0;
+my @undata = ();
+while (my $line = <STDIN>) {
+    next if ($line =~ /^\#/);
+    next if ($line =~ /^\s+$/);
+    my @items = split (/\s+/, $line);
+    $undata[$#undata+1] = $items[$key];
+}
+
+#my @data = sort {$a <=> $b} @undata;
+#my @data = @undata;
+
+my $stat = Statistics::Descriptive::Full->new();
+$stat->add_data (@undata);
+
+#my $x = $stat->percentile(90);
+#printf ("90 %1.14f\n", $x);
+
+#$x = $stat->percentile(95);
+#printf ("95 %1.14f\n", $x);
+
+my $x = $stat->percentile($percentile);
+printf ("%1.14f\n", $x);
+
+#for (my $i = $#data; $i >= 0; $i--) {
+#    if ($i/$#data > .99) {
+#	printf ("%1.14f\n", $data[$i]);
+#	exit;
+#    }
+#}
+
+
+

@@ -1,0 +1,59 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my $usage = "Usage: cat file | enumerate [-r] [-s N]\n";
+$usage .=   "       Puts an monotonically increasing index at the beginning of each line\n";
+$usage .=   "       -r Put one index for each line, but randomize them,";
+$usage .=   "          without changing the order of the lines.";
+$usage .=   "       -s Start numbering at N, default is 0";
+
+my $count = 0;
+my $randomize = 0;
+
+my %para = ();
+getopts('rs:', \%para);
+
+if (defined($para{'r'})) {
+    $randomize = 1;
+}
+if (defined($para{'s'})) {
+    $count = $para{'s'};
+}
+if (defined($para{'h'})) {
+    die ($usage);
+}
+
+if ($randomize) {
+    my @lines = ();
+    my @indexes = ();
+    while (my $line = <>) {
+	$lines[$#lines+1] = $line;
+	$indexes[$#indexes+1] = $count++;
+    }
+
+    &fisher_yates_shuffle (\@indexes);
+
+    for (my $i = 0; $i <= $#lines; $i++) {
+	print "$indexes[$i] $lines[$i]";
+    }
+
+} else {
+    # duplicating because this will run slower if input is big and we don't want to randomize
+    while (my $line = <>) {
+	print "$count $line";
+	$count++;
+    }
+}
+
+sub fisher_yates_shuffle {
+    my $array = shift;
+    my $i;
+    for ($i = @$array; --$i;) {
+	my $j = int rand ($i+1);
+	next if ($i == $j);
+	@$array[$i,$j] = @$array[$j,$i];
+    }
+}
+

@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+
+use strict;
+
+my @vals = ();
+
+my $numerator = -1;
+my $denomonator = -1;
+
+if ($#ARGV != 2) {
+  $numerator = $ARGV[0];
+  $denomonator = $ARGV[1];
+} 
+
+if ($numerator < 0 || $denomonator < 0) {
+  print "Usage: cat [datafile] | perl divideColumns [numerator column] [denomonator column]\n";
+  exit (0);
+}
+
+while (my $line = <STDIN>) {
+  my (@items) = split (/\s+/, $line);
+  my $res = $items[$numerator] / $items[$denomonator];
+  $line =~ s/\s+$//;
+  print "$line $res\n";
+}

@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+
+use strict;
+
+if ($#ARGV != 2) {
+	die "Usage: replace filename old new.\n";
+}
+
+#print "$ARGV[0]\n";
+
+my $file = $ARGV[0];
+my $old = $ARGV[1];
+my $new = $ARGV[2];
+
+open IN, $file or die "Could not open: $file\n";
+#if (!defined (<IN>)) {
+#}
+
+my $line = '';
+my $data = '';
+while ($line = <IN>) {
+	$line =~ s/$old/$new/g;
+	$data .= $line;
+}
+
+close IN;
+
+open OUT, ">$file";
+print OUT $data;
+close OUT;

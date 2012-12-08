@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use Net::Abuse::Utils qw( :all );
+
+# $Id: asn,v 1.1 2006/08/27 13:43:02 jonathan Exp $
+
+my $usage = "asn IP\n";
+
+if ($#ARGV != 0) {
+    die ($usage);
+}
+my $ip = $ARGV[0];
+
+
+
+# clean up input
+$ip =~ s/^\///;
+$ip =~ s/:\d+//;
+$ip =~ s/\s+//g;
+
+
+my (@info) = get_asn_info ($ip);
+
+#warn "ip $ip\n";
+#for (my $i = 0; $i <= $#info; $i++) {
+#    warn "i $i info $info[$i]\n";
+#}
+
+#exit (0);
+
+my $asn = $info[0];
+my $cn = $info[2];
+my $date = $info[4];
+my $valid = 1;
+
+my $out = "$ip";
+
+if (defined($asn)) {
+    $out .= " asn $asn";
+}
+if (defined($cn)) {
+    $out .= " cn $cn";
+}
+if (defined($date)) {
+    $out .= " $date";
+}
+print "$out\n";

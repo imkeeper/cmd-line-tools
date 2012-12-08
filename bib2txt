@@ -1,0 +1,140 @@
+#!/usr/bin/perl
+
+# $Id: bib2txt,v 1.1 2005/02/24 18:46:18 jonathan Exp $
+
+use strict;
+
+sub printEntry {
+    my ($entry) = @_;
+
+    if ((!defined($entry->{'author'})) &&
+	(!defined($entry->{'title'}))) {
+	return;
+    }
+
+    my $output = '';
+
+    if (defined ($entry->{'author'})) {
+	$output .= " $entry->{'author'},";
+    }
+    if (defined ($entry->{'title'})) {
+	$output .= " $entry->{'title'},";
+    }
+
+    if (defined ($entry->{'booktitle'})) {
+	$output .= " $entry->{'booktitle'},";
+    }
+    if (defined ($entry->{'address'})) {
+	$output .= " $entry->{'address'},";
+    }
+    if (defined ($entry->{'volume'})) {
+	$output .= " $entry->{'volume'},";
+    }
+    if (defined ($entry->{'month'})) {
+	$output .= " $entry->{'month'},";
+    }
+    if (defined ($entry->{'year'})) {
+	$output .= " $entry->{'year'},";
+    }
+    if (defined ($entry->{'pages'})) {
+	$output .= " $entry->{'pages'},";
+    }
+    $output =~ s/^\s+//;
+    $output =~ s/\s+$//;
+    $output =~ s/,$//;
+    $output .= '.';
+    print "$output\n";
+}
+
+sub grabContent {
+    my ($line) = @_;
+#    print "line $line\n";
+    if (($line =~ /{{(.*?)}}/) ||
+	($line =~ /{(.*?)}/) ||
+	($line =~ /\"(.*?)\"/)) {
+	my $content = $1;
+	$content =~ s/\{//;
+	$content =~ s/\}//;
+	$content =~ s/^\s+//;
+	$content =~ s/\s+$//;
+#	print "content $content\n";
+	return $content;
+    } else {
+#	warn "No content found in line $line\n";
+    }
+
+}
+
+my %entry = ();
+
+while (my $line = <>) {
+    $line =~ s/^\s+//;
+    $line =~ s/\s+$//;
+    next if ($line =~ /^\s/);
+    next if ($line =~ /^\}/);
+
+    my $lineLC = lc ($line);
+
+    if ($line =~ /^@/) {
+	&printEntry (\%entry);
+	%entry = ();
+	next;
+    }
+
+#    print "line in loop: $line\n";
+
+    my $content = &grabContent ($line);
+    next if ((!defined($content)) || ($content eq ''));
+
+    if ($lineLC =~ /^author/) {
+	my @authors = split (/ and /,$content);
+	my $author = '';
+	for (my $i = 0; $i < $#authors; $i++) {
+	    $author .= $authors[$i];
+	    if ($#authors > 1) {
+		$author .= ', ';
+	    } else {
+		$author .= ' ';
+	    }
+	}
+	# off by one?
+	if ($#authors > 0) {
+	    $author .= 'and ';
+	}
+	$author .= $authors[$#authors];
+	$entry{'author'} = $author;
+    }
+
+    if ($lineLC =~ /^title/) {
+	$entry{'title'} = "\"$content\"";
+    }
+
+    if (($lineLC =~ /^journal/) ||
+	($lineLC =~ /^booktitle/)) {
+	$entry{'booktitle'} = $content;	
+    }
+
+    if ($lineLC =~ /^year/) {
+	$entry{'year'} = $content;
+    }
+
+    if ($lineLC =~ /^mon/) {
+	# could do month substitution here
+	$entry{'month'} = $content;
+    }
+
+    if ($lineLC =~ /^page/) {
+	$entry{'pages'} = $content;
+    }
+
+    if ($lineLC =~ /^vol/) {
+	$entry{'volume'} = "Vol. $content";
+    }
+
+    if (($lineLC =~ /^address/) || ($lineLC =~ /^loc/)){
+	$entry{'address'} = $content;
+    }
+
+}
+
+&printEntry (\%entry);

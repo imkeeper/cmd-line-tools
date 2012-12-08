@@ -1,0 +1,36 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my %para = ();
+getopts('r', \%para);
+if (defined($para{'r'})) {
+
+
+    my $line = <>;
+    my (@items) = split (/\s+/, $line);
+    my @out = ();
+    for (my $i = 0; $i <= $#items; $i++) {
+	$out[$i] = "".($i+1)." $items[$i]";
+    }
+
+    $line = <>;
+    (@items) = split (/\s+/, $line);
+    for (my $i = 0; $i <= $#items; $i++) {
+	$out[$i] .= "\t$items[$i]";
+    }
+
+    foreach my $o (@out) {
+	print "$o\n";
+    }
+
+    exit (0);
+}
+
+
+my $line = <>;
+my (@items) = split (/\s+/, $line);
+for (my $i = 0; $i <= $#items; $i++) {
+    print "".($i+1)." $items[$i]\n";
+}

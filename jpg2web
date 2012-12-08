@@ -1,0 +1,97 @@
+#!/usr/bin/perl
+
+# Takes a bunch of pics, like those that have come out of a camera
+# and turns it into a web page.
+#
+# Assumes that each picture is named "event_foo_bar.jpg"
+
+use strict;
+use Getopt::Std;
+require '/home/lair/jonathan/bin/jtl.pl';
+
+my $picsPerRow = 4;
+
+my %para = ();
+getopts('i:o:', \%para);
+
+my $inDir = '';
+my $outDir = '';
+
+my $createIndex = 1;
+
+if ((defined($para{'i'})) && (defined($para{'o'}))) {
+    $inDir = $para{'i'};
+    $outDir = $para{'o'};
+} else {
+    die ("Usage jpg2web.pl -i inputdir -o outputdir\n");
+}
+
+if ($createIndex) {
+    open INDEX, ">$outDir/index.html" or die ("Cannot open file in $outDir");
+    print INDEX "<html><head></head><body>\n<table>";
+}
+
+opendir INDIR, "$inDir" or die ("Cannot open input dir $inDir");
+my @inFiles = readdir (INDIR);
+closedir INDIR;
+
+&fisher_yates_shuffle (\@inFiles);
+
+my $itemsInRow = 0;
+foreach my $file (@inFiles) {
+    if ($file =~ /(.*?)\.jpg$/) {
+	my $fullname = $1;
+
+	my $name = $fullname;
+	my $nicename = '';
+
+	if ($file =~ /^(.*?)\_(.*?)\.jpg$/) {
+	    $name = $2;
+	    $nicename = $name;
+	    $nicename =~ s/\_/ /g;
+	    print "$nicename\n";
+	} else {
+	    print "$name\n";
+	}
+
+	my $thumbFile = $fullname.'.thumbnail.jpg';
+	my $cmd = "convert -sample 160x80 \"$inDir/$file\" \"$outDir/$thumbFile\"";
+	print "$cmd\n";
+#	system ($cmd);
+#	if ($@) { die ("Problem with $cmd\n $@\n");}
+#	$cmd = "cp $inDir/$file $outDir/$file";
+	$cmd = 'convert -sample 25% '."\"$inDir/$file\" \"$outDir/$file\"";
+	print "$cmd\n";
+#	system ($cmd);
+#	if ($@) {die ("Problem with $cmd\n $@\n");}
+
+	if ($createIndex) {
+	    if ($itemsInRow == 0) {
+		print INDEX "<tr>\n";
+	    }
+	}
+	$itemsInRow++;
+
+	if ($createIndex) {
+	    print INDEX "<td><center>\n";
+	    print INDEX "<a href=\"$fullname.jpg\" border=0><img src=\"$thumbFile\"></a>\n";
+	    if ($nicename ne '') {
+		print INDEX "<br>$nicename\n";
+	    }
+	    print INDEX "</center></td>\n";
+
+	    if ($itemsInRow == $picsPerRow) {
+		print INDEX "</tr>\n";
+		$itemsInRow = 0;
+	    }
+	}
+    } else {
+	print "Not handling file: $file\n";
+    }
+}
+
+if ($createIndex) {
+    print INDEX "</table>\n</body></html>\n";
+    close INDEX;
+}
+

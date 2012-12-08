@@ -1,0 +1,12 @@
+#!/usr/bin/perl
+
+use strict;
+
+while (my $line = <>) {
+    if ($line =~ /^\s*(\d.*$)/) {
+	print "$1\n";
+    } else {
+#	print "REJECT $line";
+	;
+    }
+}

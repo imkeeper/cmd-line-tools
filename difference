@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $linecount = 0;
+
+my $previous = 0;
+while (my $line = <>) {
+    next if ($line =~ /^\s/);
+    next if ($line =~ /^\#/);
+    $line =~ s/\s//g;
+    if ($line =~ /^\d+$/) {
+	my $diff = $line - $previous;
+	if ($linecount > 0) {
+	    print "$diff\n";
+	}
+	$previous = $line;
+	$linecount++;
+    }
+}

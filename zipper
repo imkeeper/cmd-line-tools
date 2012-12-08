@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my %para = ();
+getopts('e', \%para);
+
+my $usage = "Usage: zipper [-e] file1 file2\n";
+$usage .=   "       -e first column from each file is an index, output: index line1 line2, discard non-matching lines\n";
+$usage .=   " Also see join\n";
+
+if ($#ARGV != 1) {
+  print "$usage";
+  exit (-1);
+}
+my $file1 = $ARGV[0];
+my $file2 = $ARGV[1];
+
+open F1, "$file1" or die ("Cannot open $file1\n");
+open F2, "$file2" or die ("Cannot open $file2\n");
+
+if (defined($para{'e'})) {
+  my @lines1 = ();
+  my @lines2 = ();
+  while (my $line = <F1>) {
+    chop $line;
+    $line =~ /^\s*(\d+)\s(.*$)/;
+    $lines1[$1] = $2;
+  }
+  while (my $line = <F2>) {
+    chop $line;
+    $line =~ /^\s*(\d+)\s(.*$)/;
+    $lines2[$1] = $2;
+  }
+  for (my $i = 0; $i <= $#lines1; $i++) {
+    if (defined ($lines1[$i]) &&
+	defined ($lines2[$i])) {
+      print "$i $lines1[$i] $lines2[$i]\n";
+    }
+  }
+
+} else {
+while (my $line1 = <F1>) {
+  my $line2 = <F2>;
+  $line1 =~ s/^\s+//;
+  $line2 =~ s/^\s+//;
+  $line1 =~ s/\s+$//;
+  $line2 =~ s/\s+$//;
+  print "$line1 $line2\n";
+}
+}
+close F1;
+close F2;

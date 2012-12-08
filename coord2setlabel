@@ -1,0 +1,23 @@
+#!/usr/bin/perl
+
+# $Id: coord2setlabel,v 1.2 2005/11/19 20:37:27 jonathan Exp $
+
+use strict;
+
+while (my $line = <>) {
+    if ( ($line =~ /^\d+\s+(.*?)\s+(.*)$/) ||
+	 ($line =~ /^(.*?)\s+(.*)$/)) {
+	#my $id = $1;
+	my $name = $1;
+	my $coord = $2;
+	my (@coords) = split (/\s/,$coord);
+	print "set label \'$name\' at ";
+	for (my $i = 0; $i <= $#coords; $i++) {
+	    print "$coords[$i]";
+	    if ($i != $#coords) {
+		print ",";
+	    }
+	}
+	print "\n";
+    }
+}

@@ -1,0 +1,64 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+my $usage = "Usage: join -a file1 -b file2 -x columnfile1 -y columnfile2\n";
+$usage .=   "            -i silently ignore duplicate keys in file1\n";
+$usage .=   "       1-based indexing (first column is 1)\n";
+
+my %para = ();
+getopts('a:b:x:y:iv', \%para);
+if ( !defined ($para{'a'}) || !defined ($para{'b'}) || !defined ($para{'x'}) || !defined ($para{'y'})) {
+    die ($usage);
+}
+my $fileA = $para{'a'};
+my $fileB = $para{'b'};
+my $colA = $para{'x'};
+my $colB = $para{'y'};
+my $verbose = 0;
+if (defined ($para{'v'})) {
+    $verbose = 1;
+}
+$colA--;
+$colB--;
+
+my %A = ();
+
+open FA, "$fileA" or die ("Cannot open $fileA");
+while (my $line = <FA>) {
+  next if ($line =~ /^\#/);
+  $line =~ s/^\s+//;
+  my (@items) = split (/\s+/, $line);
+  my $key = $items[$colA];
+  next if (!defined ($key));
+  if (defined ($A{$key})) {
+      if (! defined ($para{'i'})) {
+	  warn "Duplication key $key in $fileA";
+      }
+      next;
+  }
+  if ($verbose) {
+      print "A $key\n";
+  }
+  $line =~ s/\n//;
+  $A{$key} = $line;
+}
+close FA;
+
+
+open FB, "$fileB" or die ("Cannot open $fileB");
+while (my $line = <FB>) {
+  next if ($line =~ /^\#/);
+  $line =~ s/^\s+//;
+  my (@items) = split (/\s+/, $line);
+  my $key = $items[$colB];
+  next if (!defined ($key));
+  if ($verbose) {
+      print "B $key\n";
+  }
+  if (defined ($A{$key})) {
+    print "$A{$key} $line";
+  }
+}
+close FB;

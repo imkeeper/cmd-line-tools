@@ -1,0 +1,115 @@
+#!/usr/bin/perl
+
+use English;
+use strict;
+
+my $maxParallelCount = 16;
+my $waitTime = 0;
+
+my $progname = $PROGRAM_NAME;
+$progname =~ s/(.*\/)//;
+
+#print "name $progname\n";
+
+open HOSTFILE, $ENV{PSSH_HOSTS} or die "Cannot open PSSH_HOSTS $ENV{PSSH_HOSTS}";
+
+my $maxCompleteTime = 10;
+my %pids = ();
+while (my $host = <HOSTFILE>) {
+    $host =~ s/\s//g;
+    next if ($host =~ /^\#/);
+    next if ($host eq '');
+
+    my $userhost = $ENV{PSSH_USER}.'@'.$host;
+    my $cmd = '';
+    if ($progname eq 'pssh') {
+	$cmd = 'ssh '.$userhost." \'@ARGV\'";
+    } elsif ($progname eq 'pscp') {
+	$cmd = 'scp '.$ARGV[0]." $userhost:".$ARGV[1];
+    } elsif ($progname eq 'prsync') {
+	$cmd = 'rsync '.$ARGV[0]." ".$ARGV[1]." $userhost:".$ARGV[2];
+	print "$cmd\n";
+	exit (0);
+#	$maxCompleteTime = 60;
+    } elsif ($progname eq 'get-runlog') {
+        #sbon/sbon-lefthand.eecs.harvard.edu.log
+        #tcsh -c "get-runlog log runlog"
+	$cmd = "scp $userhost:~/local/sbon/sbon-$host.log $ARGV[0]/";
+	#print "$cmd\n";
+	#exit (0);
+	#$cmd = "scp $userhost:~/local/$ARGV[1] $ARGV[0]/$host.$ARGV[1]";
+    }
+    if (my $childpid = fork()) {
+#	print "childpid = $childpid\n";
+	$pids{$childpid} = $host;
+    } else {
+	printf (STDERR "$cmd\n");
+	system ("$cmd");
+	
+	if ($? == -1) {
+	    print "failed to execute: $!\n";
+	}
+	elsif ($? & 127) {
+                       printf (STDERR "child died with signal %d, %s coredump\n",
+		       ($? & 127),  ($? & 128) ? 'with' : 'without');
+                   }
+	elsif ($? == 0) {
+	    print "success: $host\n";
+	    ;
+	} else {
+	    printf (STDERR "child $host exited with value %d\n", $? >> 8);
+	}
+	exit ($?);
+    }
+
+
+    my $live_pids = $maxParallelCount;
+    while ($live_pids >= $maxParallelCount) {
+	my $printPids = 0;
+	if ($waitTime > 10) {
+	    $printPids = 1;
+	}
+	$live_pids = &count_children(\%pids, $printPids);
+	#printf (STDERR "live pids = $live_pids\n");
+
+	if ($live_pids >= $maxParallelCount) {
+	    printf (STDERR "waiting for $waitTime\n");
+	    $waitTime++;
+	    sleep ($waitTime);
+	} else {
+	    $waitTime--;
+	    if ($waitTime < 0) {
+		$waitTime = 0;
+	    }
+	}
+    }
+}
+
+
+
+############################################################
+
+sub count_children {
+    my ($pid_list, $printEm) = @_;
+    my $count = 0;
+    open (PS, "ps ax|") or die ("Cannot open ps");
+    while (my $line = <PS>) {
+#      print "line = $line\n";
+	if ($line =~ /^\s*(\d+)\s+/) {
+	    my $pid = $1;
+#	    print "pid = $pid\n";
+	    if (defined($pid_list->{$pid}) &&
+		$line !~ /defunct/) {
+		if ($printEm) {
+		    printf (STDERR "$pids{$pid} ($pid) is running\n");
+		}
+#		$currentPids{$pid} = $pid_list->{$pid};
+		$count++;
+	    }
+	} else {
+	    #warn "line did not match $line\n";
+	}
+    }
+    close PS;
+    return $count;
+}

@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+# Jonathan Ledlie
+# Written Dec 18, 2003
+
+my $usage = "Usage:  zipf -a alpha (a > 0)\n";
+$usage .=   "             -i number of items\n\n";
+$usage .=   "Output: Cummulative distribution function of items being selected,\n";
+$usage .=   "         in order of popularity rank in first column\n";
+$usage .=   "        Percentage of total (difference between consecutive items)\n";
+$usage .=   "         in second column\n";
+
+my %para = ();
+my $alpha = 0.;
+my $items = 0;
+my @probs = ();
+getopts('a:i:', \%para);
+
+if ((defined($para{'a'})) && ($para{'a'} >= 0)) {
+    $alpha = $para{'a'};
+} else {
+  die ($usage);
+}
+
+if (defined($para{'i'})) {
+  $items = $para{'i'};
+} else {
+  die ($usage);
+}
+
+my $sum = 0.;
+
+for (my $i = 1; $i <= $items; $i++) {
+  my $prob = 1./($i**$alpha);
+  $probs[$i] = $prob;
+#  print "$i $prob\n";
+  $sum += $prob;
+}
+
+my $cdf = 0.;
+
+for (my $i = 1; $i <= $items; $i++) {
+  my $diff = ($probs[$i] / $sum);
+  $cdf += $diff;
+  my $out = sprintf ("%1.14f %1.14f", $cdf, $diff);
+  print "$out\n";
+}
+  
+
+

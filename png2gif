@@ -1,0 +1,22 @@
+#!/usr/bin/perl
+
+
+
+use strict;
+
+opendir DIR, ('.');
+my (@files) = readdir (DIR);
+closedir DIR;
+
+my $last = '';
+foreach my $file (@files) {
+    if ($file =~ /(.*?)\.png$/) {
+	my $gif = $1.'.gif';
+	my $cmd = "convert $file $gif";
+	$last = $gif;
+	print "$cmd\n";
+	system ($cmd);
+    }
+}
+
+rename $last, 'last.gif';

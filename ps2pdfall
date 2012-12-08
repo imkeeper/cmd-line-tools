@@ -1,0 +1,18 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $dir = '.';
+
+opendir (DIR, $dir) or die ("Cannot open $dir\n");
+my @files = readdir (DIR);
+closedir (DIR);
+
+for (my $i = 0; $i <= $#files; $i++) {
+    next if ($files[$i] !~ /\.pdf$/);
+    my $name = $files[$i];
+    $name =~ s/\.pdf/.ps/;
+    my $cmd = "pdf2ps $files[$i] $name";
+    print "$cmd\n";
+    system ($cmd);
+}

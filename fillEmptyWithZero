@@ -1,0 +1,33 @@
+#!/usr/bin/perl
+
+use strict;
+
+# takes input like
+# 2 60
+# 4 70
+# and outputs
+# 2 60
+# 3 0
+# 4 60
+
+# Useful for gnutplot histograms
+
+my $index = undef;
+while (my $line = <>) {
+
+    my (@items) = split (/\s+/,$line);
+
+    if (exists($items[0]) && exists ($items[1])) {
+
+	if (!defined($index)) {
+	    $index = $items[0];
+	} else {
+	    while ($index != $items[0]) {
+		print "$index 0\n";
+		$index++;
+	    }
+	}
+	print $line;
+	$index++;
+    }
+}

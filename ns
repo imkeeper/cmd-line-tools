@@ -1,0 +1,104 @@
+#!/usr/bin/perl
+
+
+use Socket;
+use strict;
+use Getopt::Std;
+
+my $usage = "-b print both (prepend to output line), -k column to use";
+
+my %para = ();
+getopts('bk:', \%para);
+
+my $column = 1;
+if (defined($para{'k'})) {
+    $column = $para{'k'};
+}
+
+my %name2ip = ();
+my %badNodes = ();
+
+sub getName2IP {
+    my ($name) = @_;
+
+    if (defined($badNodes{$name})) {
+      return undef;
+    }
+
+    if (!defined ($name2ip{$name})) {
+
+      my $packed;
+      $packed = gethostbyname ($name) or $packed = undef;
+      if (!defined($packed)) {
+	warn ("Cannot find address for node $name");
+	$badNodes{$name} = 1;
+	return undef;
+      }
+      my $address = inet_ntoa ($packed);
+
+    }
+
+    return $name2ip{$name};
+}
+
+my %ip2name = ();
+sub getIP2Name {
+    my ($ip) = @_;
+
+    #print "ip $ip\n";
+
+    if (!defined ($ip2name{$ip})) {
+        my $name = $ip;
+        if ($ip =~ /^\d/) {
+            # sometimes there's a failure
+            $name = gethostbyaddr(inet_aton($ip), AF_INET) or $name = $ip;
+	    #print "ip $ip name $name\n";
+        }
+
+        $ip2name{$ip} = $name;
+    }
+    return $ip2name{$ip};
+}
+
+my $ip2nameMode = -1;
+
+while (my $line = <>) {
+    chop $line;
+
+    my $name = $line;
+    if (defined($para{'b'})) {
+	my (@items) = split (/\s+/, $line);
+	$name = $items[$column-1];
+    }
+
+
+  $name =~ s/\s//g;
+  $name =~ s/^.*?:\/\///;
+  $name =~ s/\/.*$//;
+
+  if ($ip2nameMode < 0) {
+    if ($name =~ /^\d+\.\d+\.\d+\.\d+$/) {
+      $ip2nameMode = 1;
+      #print "ip mode\n";
+    } else {
+      $ip2nameMode = 0;
+      #print "name mode\n";
+    }
+  }
+
+  my $ip = '';
+  if ($ip2nameMode == 0) {
+    $ip = &getName2IP ($name);
+  } else {
+    $ip = &getIP2Name ($name);
+  }
+
+  if (defined($ip)) {
+      print "$ip";
+      if (defined($para{'b'})) {
+	  print " $line";
+      }
+      print "\n";
+  }
+
+}

@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+
+
+use strict;
+use Getopt::Std;
+
+my $usage = "range -k column (zero-based, required)\n".
+            "      -g [lines match if they are geq than this number]\n".
+            "      -l and leq than this one\n\n".
+            "Both -g and -l are optional.\n";
+
+my $key = 0;
+my $greater = 'null';
+my $lesser = 'null';
+my %para = ();
+getopts('k:g:l:', \%para);
+
+if (defined($para{'k'})) {
+    $key = $para{'k'};
+} else {
+  print "$usage\n";
+  exit (-1);
+}
+if (defined($para{'g'})) {
+    $greater = $para{'g'};
+}
+if (defined($para{'l'})) {
+    $lesser = $para{'l'};
+}
+
+while (my $line = <STDIN>) {
+  my (@items) = split (/\s+/, $line);
+  if (defined ($items[$key])) {
+    if (($greater ne 'null') && ($items[$key] < $greater)) {
+      print "toss $line";
+      next;
+    }
+    if (($lesser ne 'null') && ($items[$key] > $lesser)) {
+      print "toss $line";
+      next;
+    }
+    print "OK $line";
+  }
+}

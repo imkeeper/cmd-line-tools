@@ -1,0 +1,212 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use Statistics::Descriptive;
+use POSIX qw(ceil floor);
+
+my $usage = "Usage: cat file | bucketize [options] > output \n";
+$usage .=   "           -s size of bucket (e.g. 10000)\n";
+$usage .=   "           -l low end of bucket range\n";
+$usage .=   "           -h high end of bucket range\n";
+$usage .=   "           -z print zero when bucket is empty\n";
+$usage .=   "           -r print range\n";
+$usage .=   "           -S print statistics for each bucket\n";
+$usage .=   "           -k column to use as key\n";
+$usage .=   "           -v column to use as value (useful for option S)\n";
+$usage .=   "           -c custom bucket sizes, comma separated, given on cmd line\n";
+$usage .=   "           -n normalize outputs so that total of buckets is one\n";
+$usage .=   "           Using c precludes using s and z\n";
+$usage .=   "           l and h are useful for combining with z to produce a steady range\n";
+
+my %buckets = ();
+my %bucket_values = ();
+my $size = 0;
+my %para = ();
+my $key_column = 0;
+my $value_column = 1;
+my $use_stats = 0;
+
+getopts('s:zrcnl:h:k:v:S', \%para);
+if ((!defined ($para{'s'})) && (!defined($para{'c'}))) {
+    die ($usage);
+}
+
+if (defined ($para{'z'}) && defined($para{'c'})) {
+    die ($usage);
+}
+if (defined ($para{'k'})) {
+    $key_column = $para{'k'};
+}
+if (defined ($para{'v'})) {
+    $value_column = $para{'v'};
+}
+if (defined ($para{'S'})) {
+    $use_stats = 1;
+}
+
+
+$size = $para{'s'};
+
+my @bucketMax = ();
+if (defined ($para{'c'})) {
+  @bucketMax = @ARGV;
+}
+
+my $sum = 0;
+my $min_bucket = undef;
+my $max_bucket = undef;
+
+# grab the data
+while (my $line = <STDIN>) {
+    next if ($line =~ /^\#/);
+
+    my (@data) = split (/\s/,$line);
+
+    my $key = $data[$key_column];
+
+
+    my $value = 1;
+
+    if ($use_stats) {
+	$value = $data[$value_column];
+
+	if (($value =~ /(-?\d+\.\d+)/) || ($value =~ /(-?\d+)/)) {
+	} else {
+	    die ("Bad value $value line $line");
+	}
+
+    }
+
+    if (($key =~ /(-?\d+\.\d+)/) || ($key =~ /(-?\d+)/)) {
+
+	my $bucket = 0;
+	if (defined($para{'c'})) {
+	    my $i = 0;
+	    # this puts values below the lowest bucket into the lowest bucket
+	    # and values gt the highest into the highest.
+
+	    for (; $i <= $#bucketMax && $key > $bucketMax[$i]; $i++) {}
+
+	    if (!defined ($bucketMax[$i])) {
+		$i--;
+	    }
+
+	    $bucket = $bucketMax[$i];
+
+	    die if (!defined ($bucketMax[$i]));
+
+
+	} else {
+	  $bucket = (floor ($key / $size)) * $size;
+	}
+
+	if ($use_stats) {
+	    if (!defined($bucket_values{$bucket})) {
+		my @items = ();
+		$bucket_values{$bucket} = \@items;
+	    }
+
+	    my $items = $bucket_values{$bucket};
+	    push (@$items, $value);
+	}
+
+	$buckets{$bucket}++;	    
+
+	$sum++;
+
+	if (!defined($min_bucket) || $min_bucket > $bucket) {
+	    $min_bucket = $bucket;
+	}
+	if (!defined($max_bucket) || $max_bucket < $bucket) {
+	    $max_bucket = $bucket;
+	}
+	    
+
+	#print "line $line val $key bucket $bucket bucket-count $buckets{$bucket}\n";
+
+    } else {
+	die ("Bad input line: $line\n");
+    }
+}
+
+if (defined($para{'l'})) {
+    $min_bucket = $para{'l'};
+}
+if (defined($para{'h'})) {
+    $max_bucket = $para{'h'};
+}
+
+#print "max $max_bucket\n";
+
+# fill in missing buckets
+if (defined($para{'z'})) {
+    for (my $i = $min_bucket; $i < $max_bucket+$size; $i += $size) {
+	if (!defined ($buckets{$i})) {
+	    my $key = sprintf ("%.3f", $i);
+
+	    $buckets{$key} = 0;
+	    #print "adding bucket ".$key."\n";
+	}
+    }
+}
+
+# make the range the title if that is asked for
+my %titles = ();
+my (@names) = sort {$a <=> $b} keys %buckets;
+for (my $i = 0; $i < scalar @names; $i++) {
+    my $name = $names[$i];
+
+    if (defined ($para{'r'})) {
+	if ($i != scalar @names - 1) {
+	    $name .= "-$names[$i+1]";
+	} else {
+	    $name = ">=$name";
+	}
+    }
+    $titles{$names[$i]} = $name;
+}
+
+# normalize
+if (defined($para{'n'})) {
+    foreach my $bucket (@names) {
+
+	my $key = $buckets{$bucket};
+	my $pct = $key / $sum;
+	my $pctOut = sprintf ("%1.3f", $pct);
+	$buckets{$bucket} = $pctOut;
+    }
+}
+
+# print output
+foreach my $bucket (@names) {
+
+    my $title = $titles{$bucket};
+    my $key = $buckets{$bucket};
+
+    if ($use_stats) {
+
+	my $items = $bucket_values{$bucket};
+	my $stat = Statistics::Descriptive::Full->new();
+        $stat->add_data(@$items);
+        my $out2 = sprintf
+	    ("%d %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
+	     $stat->count(), $stat->mean(), $stat->standard_deviation(),
+	     $stat->min(),
+	     $stat->percentile(25),
+	     $stat->percentile(50),
+	     $stat->percentile(75),
+	     $stat->max());
+
+        my $out3 = $stat->count().' '.$stat->mean().' '.$stat->standard_deviation().' '.$stat->min().' '.$stat->percentile(25).' '.$stat->percentile(50).' '.$stat->percentile(75).' '.$stat->max();
+
+        my $out = $stat->count().' '.$stat->mean().' '.$stat->standard_deviation().' '.$stat->percentile(5).' '.$stat->percentile(25).' '.$stat->percentile(50).' '.$stat->percentile(75).' '.$stat->percentile(95);
+
+
+	print "$title $out\n";
+
+    } else {
+
+	print "$title $key\n";
+    }
+}

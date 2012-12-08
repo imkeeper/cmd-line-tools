@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+
+#21 <8:26> shoot java
+#java
+#Found: 0: 2918
+#Hangup
+
+# Note: make sure you pass in something early in the command string
+# as things at the end have a tendency to get truncated (and thus missed)
+
+use strict;
+
+if ($#ARGV < 0) {
+    exit (0);
+}
+ 
+sub getPID {
+    my ($name) = @_;
+    my @pids = ();
+    open (PS, "ps ax|") or die ("Cannot open ps");
+    while (my $line = <PS>) {
+        # don't want to shoot ourselves
+        next if ($line =~ /kill/);
+        next if ($line =~ /shoot/);
+        next if ($line =~ /emacs/);
+        next if ($line =~ /grep/);
+        next if ($line =~ /ssh/);
+        next if ($line =~ /sudo/);
+#	print "got $line";
+        if ($line =~ /(\d+).*?$name/ ||
+	    $line =~ /(\d+).*?emulab-sync/) {
+            $pids[$#pids+1] = $1;
+#            print "using $line\n";
+#	    print "pid ".$pids[$#pids]."\n";
+        }
+    }    
+    close PS;
+    return @pids;
+}
+ 
+my $name = $ARGV[0];
+
+#if ($#ARGV == 1) {
+#    my $signal = $ARGV[1];
+#    print "$name\n";
+#    exit (0);
+#    my (@pids) = &getPID ($name);
+#    kill $signal, @pids;
+#    exit (0);
+#}
+
+#    print "$name\n";
+my (@pids) = &getPID ($name);
+if ($#pids >= 0) {
+#    print "Found: ".$#pids.": @pids\n";
+    kill 1, @pids;
+    (@pids) = &getPID ($name);
+    sleep 1;
+    if ($#pids >= 0) {
+      sleep 3;
+      (@pids) = &getPID ($name);
+      if ($#pids >= 0) {
+#	print "Still Found: ".$#pids.": @pids\n";
+        kill 9, @pids;
+	(@pids) = &getPID ($name);
+	if ($#pids >= 0) {
+	  warn ("Could not kill everybody");
+	}
+      }
+    }
+}
+

@@ -1,0 +1,82 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use Statistics::Descriptive;
+
+# written May 21, 2003
+
+# usage: takes lines of the form
+# 0      24
+# 1      85
+# 2      88
+# ...
+# 0      5
+# 1      6
+# 2      7
+#
+# and outputs 
+# 0      (24*5)/2
+# 1      (85*6)/2
+# ...     
+
+my $usage = "Usage: cat file1 file2 | avgFiles [options] > resullt\n";
+$usage .=   "           -k column of input to use (first column is 0 and is default)\n";
+$usage .=   "           -s print stddev in parentheses\n";
+
+my %para = ();
+getopts('k:hs', \%para);
+
+my $key = 1;
+
+if (defined($para{'h'})) {
+    print "$usage\n";
+    exit (0);
+}
+
+if (defined($para{'k'})) {
+    $key += $para{'k'};
+}
+
+my @data = ();
+
+while (my $line = <STDIN>) {
+    my @items = split (/\s+/, $line);
+    if (defined ($items[0]) && defined ($items[$key])) {
+	my $index = $items[0];
+	my $value = 0;
+	# convert value into a number
+	if ( ($items[$key] =~ /(\d+\.\d+)/) ||
+	     ($items[$key] =~ /(\d+)/)) {
+	    $value = $1;
+	}
+	if (!defined ($data[$index])) {
+	    my @vals = ();
+	    $data[$index] = \@vals;
+	}
+	my $values = $data[$index];
+	my @valuesArray = @$values;
+	my $count = $#valuesArray;
+#	print "count = $count\n";
+	$values->[$count+1] = $value;
+    }
+}
+
+for (my $i = 0; $i <= $#data; $i++) {
+    if (defined($data[$i])) {
+	my $values = $data[$i];
+	my @valuesArray = @$values;
+	my $stat = Statistics::Descriptive::Full->new();
+	$stat->add_data(@valuesArray);
+	my $avg = $stat->mean();
+	$avg = sprintf ("%10.6f",$avg);
+	print "$i $avg";
+	if (defined($para{'s'})) {
+	    my $stddev = $stat->standard_deviation();
+	    $stddev = sprintf ("%.6f",$stddev);
+	    print " $stddev";
+	}
+	print "\n";
+    }
+}
+

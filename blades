@@ -1,0 +1,35 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $usage = "Runs command on all or a selected number of blades\n";
+$usage .=   "  blades \"command\" [machines]\n";
+$usage .=   "  blades \"shoot foo.pl\"\n";
+
+if ($#ARGV < 0) {
+    die ($usage);
+}
+
+my $user = 'jonathan';
+#my @allBlades = ('sb01');
+my @allBlades = ('sb01','sb02', 'sb03', 'sb05', 'sb06', 'sb07', 'sb08', 'sb09', 'sb10', 'sb11');
+
+my $baseCmd = $ARGV[0];
+
+my @blades = @ARGV;
+shift @blades;
+
+if ($#blades < 0) {
+   @blades = @allBlades;
+}
+
+for (my $i = 0; $i <= $#blades; $i++) {
+    my $blade = $blades[$i];
+    my $cmd = $baseCmd;
+    # maybe use -f ?
+    $cmd =~ s/BLADE/$blade/g;
+    $cmd = "ssh $user".'@'."$blade $cmd";
+    print "$cmd\n";
+    # check return of call and only continue if OK
+    system ($cmd);
+}

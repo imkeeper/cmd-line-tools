@@ -1,0 +1,86 @@
+#!/opt/local/bin/perl
+
+# $Id: avg,v 1.7 2006/08/27 13:43:03 jonathan Exp $
+
+use strict;
+use Getopt::Std;
+use Statistics::Descriptive;
+
+# Written by Jonathan Ledlie
+# jonathan@eecs.harvard.edu
+
+##################################################
+
+my $usage = "Usage: cat file | avg [options] > result\n";
+$usage .=   "           -k columns of input to use (first column is 1 and is default)\n";
+$usage .=   "              -k '4 5 6'\n";
+$usage .=   "              -k 4\n";
+$usage .=   "           -s print stddev after mean\n";
+$usage .=   "           -m print avg min max\n";
+
+my @data = ();
+
+my @columns = ();
+
+my %para = ();
+getopts('sk:m', \%para);
+if (defined($para{'k'})) {
+    @columns = split (/\s+/, $para{'k'});
+} else {
+    $columns[0] = 1;
+}
+
+for (my $i = 0; $i <= $#columns; $i++) {
+    my @colData = ();
+    $data[$i] = \@colData;
+#    print "i $i col $columns[$i]\n";
+}
+
+
+while (my $line = <>) {
+    my @items = split (/\s+/, $line);
+
+    for (my $i = 0; $i <= $#columns; $i++) {
+	if (defined ($items[$columns[$i]-1])) {
+	    my $columnData = $data[$i];
+	    $columnData->[$#$columnData+1] = $items[$columns[$i]-1];
+	}
+    }
+}
+
+for (my $i = 0; $i <= $#columns; $i++) {
+    if ($i > 0) { print " ";}
+    my $columnData = $data[$i];
+    if ($#$columnData <= 0) {
+#	print "ne\n";
+    } else {
+	my $stat = Statistics::Descriptive::Full->new();
+	$stat->add_data(@$columnData);
+	my $mean = $stat->mean();
+	my $res = sprintf ("%10.10f", $mean);
+
+#	for (my $j = 0; $j <= $#$columnData; $j++) {
+#	    print "j $j d $columnData->[$j]\n";
+#	}
+
+	if (defined($para{'s'})) {
+	    my $dev = $stat->standard_deviation();
+	    $dev = sprintf ("%10.10f", $dev);
+	    $res .= " $dev";
+	}
+
+	if (defined($para{'m'})) {
+	    my $min = $stat->min();
+	    my $max = $stat->max();
+	    $min = sprintf ("%10.10f", $min);
+	    $res .= " $min";
+	    $max = sprintf ("%10.10f", $max);
+	    $res .= " $max";   
+	}
+
+	print "$res";
+    }
+}
+print "\n";
+
+

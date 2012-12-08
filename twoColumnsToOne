@@ -1,0 +1,26 @@
+#!/usr/bin/perl
+
+# takes inputs of the form
+# 2   4
+# and turns them into e.g. four twos
+# 2
+# 2
+# 2
+# 2
+
+use strict;
+
+while (my $line = <>) {
+    if ($line =~ /^\s*(\d+)\s+(\d+)/) {
+	my $value = $1;
+	my $occur = $2;
+	for (my $i = 0; $i < $occur; $i++) {
+	    print "$value\n";
+	}
+    } else {
+#	print "REJECT $line";
+	;
+    }
+}
+
+

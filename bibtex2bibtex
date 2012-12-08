@@ -1,0 +1,13 @@
+#!/usr/bin/perl
+
+use strict;
+
+# for now all this does is trim out the address field to make a reduced file
+
+while (my $line = <>) {
+
+    next if ($line =~ /^\s*address/);
+
+    print $line;
+
+}

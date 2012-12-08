@@ -1,0 +1,8 @@
+#!/usr/bin/perl
+
+use strict;
+
+my (@lines) = <>;
+@lines = reverse (@lines);
+#(@lines) = reverse (\@lines);
+print (@lines);

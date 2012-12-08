@@ -1,0 +1,93 @@
+#!/usr/bin/perl
+
+# $Id: substitute,v 1.5 2006/08/27 13:43:03 jonathan Exp $
+
+use strict;
+use Getopt::Std;
+
+# Note: this should be augmented so that you can do subs in more than one column at a time
+
+my $usage = "Usage: substitute [-k column] [-v] datafile -m mapfile\n";
+$usage .=   "       take key values from mapfile and substitute them into column k of datafile\n";
+$usage .=   "       with no column given, all substitutions possible are made\n";
+$usage .=   "       -v instead of \"key value\", read mapfile as \"value key\"\n";
+
+$usage .=   "       -x if key is not defined in a column, ignore line\n";
+
+$usage .=   "       -C file is not in columns, just substitute all values in map for anything that matches in the file\n";
+
+
+my %para = ();
+
+getopts('k:vxCm:', \%para);
+
+my $dataFile = $ARGV[0];
+
+my $mapFile = '';
+if (!defined($para{'m'})) {
+  die ($usage);
+}
+$mapFile = $para{'m'};
+
+my %map = ();
+
+open MAP, "$mapFile" or die ("Cannot open $mapFile\n");
+while (my $line = <MAP>) {
+    my (@items) = split (/\s+/, $line);
+    if (!defined($para{'v'})) {
+	$map{$items[0]} = $items[1];
+    } else {
+	$map{$items[1]} = $items[0];
+    }
+}
+close MAP;
+
+my $lineCount = 0;
+#open DATA, "$dataFile" or die ("Cannot open $dataFile\n");
+if (!$para{'C'}) {
+    while (my $line = <>) {
+	my (@items) = split (/\s+/, $line);
+	my $out = '';
+	my $validLine = 1;
+	for (my $i = 0; $validLine && $i <= $#items; $i++) {
+	    if ((defined($para{'k'}) && $i == $para{'k'}-1) ||
+		(!defined($para{'k'}))) {
+		if (defined ($map{$items[$i]})) {
+		    $out .= $map{$items[$i]};
+		} else {
+		    if (defined($para{'x'})) {
+			$validLine = 0;
+		    } else {
+			$out .= $items[$i];
+		    }
+		}
+	    } else {
+		$out .= $items[$i];
+	    }
+	    if ($i != $#items) {
+		$out .= " ";
+	    }
+	}
+
+	if ($validLine == 1) {
+	    print "$out\n";
+	}
+    }
+} else {
+    my $whole = '';
+    while (my $line = <>) {
+#    while (my $line = <DATA>) {
+	$whole .= $line;
+    }
+    foreach my $key (keys %map) {
+	$whole =~ s/$key/$map{$key}/g;
+    }
+    print "$whole";
+}
+
+#close DATA;
+
+
+
+
+

@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+use strict;
+
+# unrolls or prints low or high values for each line.
+# p => value must be positive to count as min or max
+
+use Getopt::Std;
+my %para = ();
+getopts('lhp', \%para);
+
+if (defined($para{'l'}) && defined($para{'h'})) {
+    die ("l and h are mutually exclusive");
+}
+
+while (my $line = <>) {
+
+    my (@items) = split (/\s+/,$line);
+
+    if (defined($para{'l'})) {
+
+	my $min = undef;
+	for (my $i = 0; $i <= $#items; $i++) {
+	    if (!defined($min) || $min > $items[$i]) {
+		if (!defined($para{'p'}) || $items[$i] > 0) {
+		    $min = $items[$i];
+		}
+	    }
+	}
+	print "$min\n";
+
+    } elsif (defined($para{'h'})) {
+
+	my $max = undef;
+	for (my $i = 0; $i <= $#items; $i++) {
+	    if (!defined($max) || $max < $items[$i]) {
+		if (!defined($para{'p'}) || $items[$i] > 0) {
+		    $max = $items[$i];
+		}
+	    }
+	}
+	print "$max\n";
+
+
+
+    } else {
+
+	# just do a basic unrolling
+
+	foreach my $i (@items) {
+	    print "$i\n";
+	}
+    }
+}

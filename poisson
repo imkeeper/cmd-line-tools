@@ -1,0 +1,27 @@
+#!/usr/bin/perl
+
+use strict;
+
+use Math::Random qw(random_poisson);
+use Getopt::Std;
+
+my $usage = "Usage: poisson\n".
+  "         -n [number of samples]\n".
+  "         -m [mean]";
+
+my %para = ();
+
+getopts('n:m:', \%para);
+
+if ( (!defined($para{'n'}))||(!defined($para{'m'}))) {
+  print "$usage\n";
+  exit (-1);
+}
+my $mean = $para{'m'};
+my $sample = $para{'n'};
+
+my (@samples) = random_poisson ($sample, $mean);
+
+for (my $i = 0; $i < $sample; $i++) {
+  print "$samples[$i]\n";
+}

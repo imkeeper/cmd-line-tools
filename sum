@@ -1,0 +1,31 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+
+##################################################
+
+my $usage = "Usage: cat file | sum [options] > result\n";
+$usage .=   "           -k column of input to use (first column is 0 and is default)\n";
+
+my $key = 0;
+my %para = ();
+getopts('k:', \%para);
+
+if (defined($para{'k'})) {
+    $key = $para{'k'};
+}
+
+my $total = 0;
+
+while (my $line = <STDIN>) {
+    $line =~ s/^\s+//;
+    my @items = split (/\s+/, $line);
+    if (defined ($items[$key])) {
+	my $item = $items[$key];
+	$item =~ s/,//g;
+	$total += $item;
+    }
+}
+
+print "$total\n";

@@ -1,0 +1,43 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use POSIX qw(ceil floor);
+
+my $usage = "Usage: cat file | normalize -c [column] -p [plus] -x [divide] -a > output \n".
+    " -a uses the first value found in the first row at column c as the amount to subtract by, i.e. auto normalize";
+
+
+my %para = ();
+getopts('c:p:x:a', \%para);
+
+while (my $line = <STDIN>) {
+    next if ($line =~ /^\#/);
+
+    my (@item) = split (/\s/,$line);
+    my $i = $item[$para{'c'}];
+    my $ip = $i;
+    next if (!defined($i));
+
+    if (!defined($para{'p'}) && defined($para{'a'})) {
+	$para{'p'} = -1 * $i;
+    }
+
+    if (defined($para{'p'})) {
+	$i += $para{'p'};
+    }
+
+    if (defined($para{'x'})) {
+	$i /= $para{'x'};
+    }
+
+    #print "was $ip now $i\n";
+
+    $item[$para{'c'}] = $i;
+
+    print "@item\n";
+
+
+
+
+}

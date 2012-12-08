@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $start = -1;
+while (my $line = <>) {
+
+    if ($line =~ /^(\d+)\s(.*)$/) {
+	my $stamp = $1;
+	my $rest = $2;
+	if ($start == -1) {
+	    $start = $stamp;
+	}
+	$stamp = $stamp - $start;
+	print "$stamp $rest\n";
+    } else {
+	die ("Line did not match: $line\n");
+    }
+
+}
